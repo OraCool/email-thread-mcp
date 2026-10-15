@@ -17,7 +17,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.3.0"]
+      "args": ["email-thread-mcp@0.3.1"]
     }
   }
 }

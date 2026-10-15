@@ -1,6 +1,6 @@
 [project]
 name = "email-thread-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for the AR email agent: parses an inbound email thread into the thread contract and validates the agent's output envelope."
 readme = "README.md"
 license = "MIT"
@@ -10,6 +10,12 @@ dependencies = [
     "dateparser>=1.2,<2",
     "mcp>=2.3,<3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/OraCool/email-thread-mcp"
+Repository = "https://github.com/OraCool/email-thread-mcp"
+Issues = "https://github.com/OraCool/email-thread-mcp/issues"
+Changelog = "https://github.com/OraCool/email-thread-mcp/releases"
 
 [project.scripts]
 email-thread-mcp = "email_thread_mcp.server:main"
