@@ -17,6 +17,10 @@ _BLOCK_TAGS = {
     "h4", "h5", "h6", "header", "hr", "li", "ol", "p", "pre", "section", "table", "tr", "ul",
 }
 _CELL_TAGS = {"td", "th"}
+# A cell this small is data (an invoice number, a date, an amount) and its row becomes one line. A larger
+# one is layout: Outlook may put a whole message in a single cell, and joining that would ruin it.
+_SHORT_CELL_LINES = 3
+_SHORT_CELL_CHARS = 200
 _SKIP_TAGS = {"head", "script", "style", "title"}
 _VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 _HIDDEN_STYLE = re.compile(
@@ -58,6 +62,56 @@ class _TextExtractor(HTMLParser):
         self._hidden_tag: str | None = None
         self._hidden_depth = 0
         self.hidden_chars = 0
+        # Open cells (each collects its own text), open rows (cells done so far, and how many cells were
+        # open when the row started) and open tables (how many rows and cells were open at their start).
+        self._cells: list[list[str]] = []
+        self._rows: list[tuple[list[str], int]] = []
+        self._tables: list[tuple[int, int]] = []
+
+    def _out(self) -> list[str]:
+        return self._cells[-1] if self._cells else self._parts
+
+    def _close_cell(self) -> None:
+        text = normalise_text("".join(self._cells.pop()))
+        if self._rows and len(self._cells) == self._rows[-1][1]:
+            self._rows[-1][0].append(text)
+        elif text:
+            self._out().append(f"\n{text}\n")
+
+    def _close_row(self) -> None:
+        while self._cells and len(self._cells) > self._rows[-1][1]:
+            self._close_cell()
+        cells, _ = self._rows.pop()
+        while cells and not cells[-1]:
+            cells.pop()
+        if not any(cells):
+            return
+        short = all(
+            QUOTE_MARKER not in c and c.count("\n") < _SHORT_CELL_LINES and len(c) <= _SHORT_CELL_CHARS for c in cells
+        )
+        if short:
+            out = self._out()
+            line = " | ".join(c.replace("\n", " ") for c in cells)
+            # Rows of one table stay together: no blank line between them.
+            out.append(("" if out and out[-1].endswith("\n") else "\n") + line + "\n")
+        else:
+            self._out().append("\n" + "\n".join(c for c in cells if c) + "\n")
+
+    def _close_table(self) -> None:
+        rows, cells = self._tables.pop()
+        while len(self._rows) > rows:
+            self._close_row()
+        while len(self._cells) > cells:
+            self._close_cell()
+
+    def close(self) -> None:
+        super().close()
+        while self._tables:
+            self._close_table()
+        while self._rows:
+            self._close_row()
+        while self._cells:
+            self._close_cell()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _SKIP_TAGS:
@@ -70,11 +124,21 @@ class _TextExtractor(HTMLParser):
             self._hidden_tag, self._hidden_depth = tag, 1
             return
         if not self._skip_depth and _is_quote_marker(tag, attrs):
-            self._parts.append(f"\n{QUOTE_MARKER}\n")
-        if tag in _BLOCK_TAGS:
-            self._parts.append("\n")
+            self._out().append(f"\n{QUOTE_MARKER}\n")
+        if tag == "table":
+            self._tables.append((len(self._rows), len(self._cells)))
+        elif tag == "tr":
+            if self._rows and (not self._tables or len(self._rows) > self._tables[-1][0]):
+                self._close_row()  # the previous <tr> of this table was not closed
+            self._rows.append(([], len(self._cells)))
+            return
         elif tag in _CELL_TAGS:
-            self._parts.append("\t")
+            if self._rows and len(self._cells) > self._rows[-1][1]:
+                self._close_cell()  # the previous <td> was not closed
+            self._cells.append([])
+            return
+        if tag in _BLOCK_TAGS:
+            self._out().append("\n")
 
     def handle_endtag(self, tag: str) -> None:
         if tag in _SKIP_TAGS:
@@ -84,12 +148,22 @@ class _TextExtractor(HTMLParser):
                 self._hidden_depth -= 1
                 if not self._hidden_depth:
                     self._hidden_tag = None
+        elif tag in _CELL_TAGS:
+            if self._cells and (not self._rows or len(self._cells) > self._rows[-1][1]):
+                self._close_cell()
+        elif tag == "tr":
+            if self._rows and (not self._tables or len(self._rows) > self._tables[-1][0]):
+                self._close_row()
+        elif tag == "table":
+            if self._tables:
+                self._close_table()
+            self._out().append("\n")
         elif tag in _BLOCK_TAGS:
-            self._parts.append("\n")
+            self._out().append("\n")
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _BLOCK_TAGS and not self._hidden_tag:
-            self._parts.append("\n")
+            self._out().append("\n")
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
@@ -97,7 +171,7 @@ class _TextExtractor(HTMLParser):
         if self._hidden_tag:
             self.hidden_chars += len(data.strip())
             return
-        self._parts.append(data)
+        self._out().append(data)
 
     def text(self) -> str:
         return "".join(self._parts)
