@@ -223,3 +223,18 @@ def test_a_customer_message_is_never_ours() -> None:
 def test_ar_mailboxes_identify_our_message_without_a_greeting() -> None:
     result = parse_email_thread(QUOTED_PLAIN, ar_mailboxes=["ar@example.com"])
     assert result["our_signature"] == "Anna Keller"
+
+
+def test_our_signature_is_the_fullest_block_of_our_person() -> None:
+    follow_up = """<html><body><div>Dear Ms. Weiss,</div><div>9000012 will be paid in our next cycle.</div>
+<div>Best regards,</div><div>Jan Berg</div>
+<hr><div id="divRplyFwdMsg"><b>From:</b> AR Desk &lt;ar-desk@example.com&gt;<br><b>Sent:</b> Wednesday, October 7, 2026 10:00 AM<br>
+<b>To:</b> Jan Berg &lt;j.berg@customer.example&gt;<br><b>Subject:</b> RE: Overdue invoices</div>
+<div>Dear Mr. Berg,</div><div>Could you confirm the payment date for 9000012?</div>
+<div>Kind regards,</div><div>Clara Weiss</div>
+<hr><div id="divRplyFwdMsg"><b>From:</b> Jan Berg &lt;j.berg@customer.example&gt;<br><b>Sent:</b> Tuesday, October 6, 2026 8:30 AM<br>
+<b>To:</b> AR Desk &lt;ar-desk@example.com&gt;<br><b>Subject:</b> RE: Overdue invoices</div>"""
+    body = follow_up + OVERDUE_TABLE_REPLY.removeprefix("<html><body>")
+    result = parse_email_thread(body)
+    assert [m["signer_name"] for m in result["thread_context"]][-1] == "Clara Weiss"
+    assert result["our_signature"] == "Clara Weiss\nFinance Department\nExample Trading GmbH"

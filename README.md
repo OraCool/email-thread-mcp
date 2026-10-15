@@ -18,7 +18,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.4.0"]
+      "args": ["email-thread-mcp@0.4.1"]
     }
   }
 }
@@ -48,7 +48,8 @@ For the reply, two fields save the drafting model from reading the whole thread:
   it is `Mr. Berg` for `Jan Berg`; otherwise the name as given. No honorific is added that no message states.
 - `our_signature`: the signature block of our quoted message, to sign the reply with. Our message is
   the one from `ar_mailboxes` or, without them, the one signed by the person the customer greets
-  ("Dear Ms. Weiss" → Clara Weiss's message). Phone, email, URL and address lines are dropped; `null`
+  ("Dear Ms. Weiss" → Clara Weiss's message). Of that person's quoted messages, the fullest block is
+  used, since a short follow-up is often signed with the name alone. Phone, email, URL and address lines are dropped; `null`
   when no quoted message is ours. If parsing fails, falling back to the plain-text body before the first quote marker keeps
 the agent working.
 

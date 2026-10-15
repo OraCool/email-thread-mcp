@@ -517,12 +517,24 @@ def _signature_line_ok(line: str) -> bool:
     )
 
 
+def _clean_signature(m: Message) -> str | None:
+    lines = [l.strip() for l in (m.signature or "").split("\n") if l.strip()]
+    if not lines:
+        return None
+    if lines[0] != m.signer_name:
+        return m.signer_name
+    kept = [lines[0]] + [l for l in lines[1:] if _signature_line_ok(l)]
+    return "\n".join(kept[:_SIGNATURE_LINES])
+
+
 def resolve_our_signature(latest: Message, history_newest_first: list[Message]) -> str | None:
-    """The signature block the reply is signed with: that of our quoted message.
+    """The signature block the reply is signed with: that of our quoted messages.
 
     Ours is the newest quoted message from the AR team (role "recipient"), else one signed by the person
     the latest message greets (it wrote "Dear Ms. Weiss", so Clara Weiss's message is ours). A message
-    known to be the customer's never counts. Contact lines are dropped; None means no such message.
+    known to be the customer's never counts. Of that person's quoted messages, the fullest block is used
+    (a short follow-up is often signed with the name alone); the newest wins a tie. Contact lines are
+    dropped; None means no such message.
     """
     ours = next((m for m in history_newest_first if m.role == "recipient" and m.signer_name and m.signature), None)
     if ours is None and latest.greeting_name:
@@ -531,13 +543,13 @@ def resolve_our_signature(latest: Message, history_newest_first: list[Message]) 
              if m.role != "sender" and m.signer_name and m.signature and _same_person(latest.greeting_name, m.signer_name)),
             None,
         )
-    if ours is None or not ours.signature:
+    if ours is None:
         return None
-    lines = [l.strip() for l in ours.signature.split("\n") if l.strip()]
-    if not lines or lines[0] != ours.signer_name:
-        return ours.signer_name
-    kept = [lines[0]] + [l for l in lines[1:] if _signature_line_ok(l)]
-    return "\n".join(kept[:_SIGNATURE_LINES])
+    blocks = [
+        b for m in history_newest_first
+        if m.role == ours.role and m.signer_name == ours.signer_name and (b := _clean_signature(m))
+    ]
+    return max(blocks, key=lambda b: b.count("\n"), default=None)
 
 
 # --------------------------------------------------------------------------------------------- #
