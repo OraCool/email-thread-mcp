@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:email-thread-mcp:schema:thread",
+  "title": "ParsedEmailThread",
+  "description": "Output of the parse_email_thread MCP tool: the inbound email body (raw Outlook/Gmail HTML or plain text, latest message on top) split into the latest message and the quoted history. The tool returns only derived fields; the original body stays with the caller.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "latest_message", "thread_context", "reply_to_name", "parse_info"],
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "description": "Version of this contract. Bumped on any breaking change so the tool and the prompts cannot drift apart unnoticed."
+    },
+    "latest_message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "greeting_name", "signer_name", "signature"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Plain text of the newest message: quoted history, signature and boilerplate removed. Paragraph breaks kept. This is what classification, sentiment and drafting work on."
+        },
+        "greeting_name": {
+          "type": ["string", "null"],
+          "description": "Name in the message's own greeting, as written ('Ms. Lange'). In a customer reply this names the AR team member, i.e. us - never the person to reply to."
+        },
+        "signer_name": {
+          "type": ["string", "null"],
+          "description": "Person who signed the message ('Clara Bauer'), or null when the sign-off carries no name."
+        },
+        "signature": {
+          "type": ["string", "null"],
+          "description": "The full sign-off block as written (name, title, company), or null."
+        }
+      }
+    },
+    "thread_context": {
+      "type": "array",
+      "description": "Earlier messages of the thread, OLDEST FIRST. Same item shape as thread_context in classify.request.schema.json and draft.request.schema.json, plus header and name fields.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "body"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["sender", "recipient", "unknown"],
+            "description": "sender = the customer side (who wrote the latest email); recipient = the AR team (us); unknown when it cannot be told from configuration."
+          },
+          "from": { "type": ["string", "null"], "description": "From header as written." },
+          "to": { "type": ["string", "null"], "description": "To header as written." },
+          "sent_at": { "type": ["string", "null"], "description": "Sent header as ISO 8601 when parseable, otherwise null." },
+          "subject": { "type": ["string", "null"] },
+          "greeting_name": { "type": ["string", "null"] },
+          "signer_name": { "type": ["string", "null"] },
+          "body": { "type": "string", "minLength": 1, "description": "Plain text of that message, signature included." }
+        }
+      }
+    },
+    "reply_to_name": {
+      "type": ["string", "null"],
+      "description": "Who the draft reply should greet: the latest message's signer, else the name our previous message greeted, else null. Null means the drafter uses a neutral greeting; the tool never guesses a name."
+    },
+    "parse_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "quoted_messages", "warnings"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["outlook-html", "gmail-html", "apple-html", "html-unknown", "plain-text", "plain-text-no-quotes"],
+          "description": "Detected body format, by the quote marker that matched."
+        },
+        "quoted_messages": { "type": "integer", "minimum": 0 },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "What could not be determined, e.g. 'no quote marker found: whole body treated as the latest message'. Empty when the parse was clean."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+# Real customer emails and their ground truth: local only, never pushed.
+tests/fixtures/
+tests/test_client_threads.py
+.DS_Store

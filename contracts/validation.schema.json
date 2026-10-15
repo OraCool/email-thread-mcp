@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:email-thread-mcp:schema:validation",
+  "title": "OutputValidationResult",
+  "description": "Output of the validate_output MCP tool: deterministic checks of the final envelope against the request (category list) and the parsed thread. It corrects only what is unambiguous and reports the rest; it never picks a category by similarity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "valid", "output", "issues"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "valid": {
+      "type": "boolean",
+      "description": "True when no issue of severity 'error' remains after the safe corrections."
+    },
+    "output": {
+      "type": "object",
+      "description": "The envelope with the safe corrections applied (see issues[].corrected). Identical to the input when nothing was corrected."
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["check", "severity", "path", "message", "corrected"],
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "category_in_list",
+              "category_duplicate",
+              "invoice_numbers",
+              "requires_human_review",
+              "greeting_matches_reply_to",
+              "attachment_placeholder"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning"],
+            "description": "error = the output breaks the contract (e.g. a category not in the list that could not be safely mapped); warning = likely quality problem for human review."
+          },
+          "path": { "type": "string", "description": "JSON path of the offending value, e.g. $.classification.categories[1].category" },
+          "message": { "type": "string" },
+          "corrected": {
+            "type": "boolean",
+            "description": "True when the tool fixed it in `output` (exact match after normalising case, whitespace, quotes, dashes and slashes; duplicate removal; human-review flag)."
+          }
+        }
+      }
+    }
+  }
+}
