@@ -1,6 +1,6 @@
 [project]
 name = "email-thread-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP server for the AR email agent: parses an inbound email thread into the thread contract and validates the agent's output envelope."
 readme = "README.md"
 license = "MIT"

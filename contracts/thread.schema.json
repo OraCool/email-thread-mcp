@@ -5,10 +5,10 @@
   "description": "Output of the parse_email_thread MCP tool: the inbound email body (raw Outlook/Gmail HTML or plain text, latest message on top) split into the latest message and the quoted history. The tool returns only derived fields; the original body stays with the caller.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "latest_message", "thread_context", "reply_to_name", "parse_info"],
+  "required": ["schema_version", "latest_message", "thread_context", "reply_to_name", "reply_to_greeting", "our_signature", "parse_info"],
   "properties": {
     "schema_version": {
-      "const": "1.0",
+      "const": "1.1",
       "description": "Version of this contract. Bumped on any breaking change so the tool and the prompts cannot drift apart unnoticed."
     },
     "latest_message": {
@@ -60,6 +60,14 @@
     "reply_to_name": {
       "type": ["string", "null"],
       "description": "Who the draft reply should greet: the latest message's signer, else the name our previous message greeted, else null. Null means the drafter uses a neutral greeting; the tool never guesses a name."
+    },
+    "reply_to_greeting": {
+      "type": ["string", "null"],
+      "description": "The form of address for reply_to_name: how a quoted message not from the customer already greeted that person ('Mr. Berg' for 'Jan Berg'), else reply_to_name unchanged. Null when reply_to_name is null. An honorific is never added that no message states."
+    },
+    "our_signature": {
+      "type": ["string", "null"],
+      "description": "Signature block to sign the reply with: that of our quoted message (role 'recipient', else the one signed by the person the latest message greets). Name first, then title/department/company lines, at most 4; phone, email, URL and address lines are dropped. Null when no quoted message is ours."
     },
     "parse_info": {
       "type": "object",

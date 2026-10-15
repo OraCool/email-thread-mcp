@@ -45,6 +45,8 @@ def _coerce(value: Any, name: str = "argument") -> Any:
 def parse_email_thread(body: str, ar_mailboxes: list[str] | str | None = None) -> dict[str, Any]:
     """Split an inbound email body (HTML or plain text, newest message on top) into the latest
     message, its signer and greeting, and the quoted history (oldest first), per the thread contract.
+    Also returns who to greet and how (reply_to_name, reply_to_greeting) and our_signature, the
+    signature block of our quoted message to sign the reply with.
 
     Args:
         body: the raw email body (HTML or plain text), unchanged.

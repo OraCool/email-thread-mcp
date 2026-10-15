@@ -1,6 +1,6 @@
 """Split an inbound email body into the latest message and its quoted history.
 
-Output shape: contracts/thread.schema.json (schema_version 1.0).
+Output shape: contracts/thread.schema.json (schema_version 1.1).
 
 The body arrives as raw HTML (Outlook, Gmail, Apple Mail) or plain text, newest message on top.
 It is converted to text with line structure kept, then cut at every quote boundary:
@@ -28,7 +28,7 @@ import dateparser
 from . import vocab
 from .html_text import QUOTE_MARKER, html_to_text, looks_like_html, normalise_text, strip_invisible
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 # Bounds on attacker-sized input: the body is customer-controlled text.
 _MAX_RAW_CHARS = 2_000_000
@@ -472,6 +472,74 @@ def resolve_reply_to_name(latest: Message, history_newest_first: list[Message]) 
     return ours.greeting_name if ours else None
 
 
+def _name_tokens(name: str) -> list[str]:
+    return [t.lower().strip(".,") for t in _HONORIFIC.sub("", name.strip()).split()]
+
+
+def _has_honorific(name: str) -> bool:
+    return bool(_HONORIFIC.match(name.strip())) and len(_name_tokens(name)) >= 1
+
+
+def _same_person(greeting: str, full_name: str) -> bool:
+    """'Mr. Berg' or 'Anna' (as greeted) against 'Jan Berg' / 'Anna Keller' (as signed)."""
+    greeted, signed = _name_tokens(greeting), _name_tokens(full_name)
+    if not greeted or not signed:
+        return False
+    if _has_honorific(greeting) or len(greeted) > 1:
+        return greeted[-1] == signed[-1]
+    return greeted[0] in (signed[0], signed[-1])
+
+
+def resolve_reply_to_greeting(reply_to_name: str | None, history_newest_first: list[Message]) -> str | None:
+    """The form of address for reply_to_name: how a quoted message of ours already greeted that person.
+
+    'Jan Berg' becomes 'Mr. Berg' when an earlier message opened "Dear Mr. Berg,";
+    otherwise the name stays as given. An honorific is never added that no message states.
+    """
+    if not reply_to_name:
+        return None
+    for m in history_newest_first:
+        if m.role != "sender" and m.greeting_name and _has_honorific(m.greeting_name) and _same_person(m.greeting_name, reply_to_name):
+            return m.greeting_name
+    return reply_to_name
+
+
+_SIGNATURE_LINES = 4
+
+
+def _signature_line_ok(line: str) -> bool:
+    """Name, title, department, company. Not contact data: phone, address, email, URL, or a disclaimer."""
+    return (
+        len(line) <= 60
+        and not _EMAIL.search(line)
+        and not re.search(r"https?://|www\.", line, re.IGNORECASE)
+        and sum(ch.isdigit() for ch in line) < 5
+    )
+
+
+def resolve_our_signature(latest: Message, history_newest_first: list[Message]) -> str | None:
+    """The signature block the reply is signed with: that of our quoted message.
+
+    Ours is the newest quoted message from the AR team (role "recipient"), else one signed by the person
+    the latest message greets (it wrote "Dear Ms. Weiss", so Clara Weiss's message is ours). A message
+    known to be the customer's never counts. Contact lines are dropped; None means no such message.
+    """
+    ours = next((m for m in history_newest_first if m.role == "recipient" and m.signer_name and m.signature), None)
+    if ours is None and latest.greeting_name:
+        ours = next(
+            (m for m in history_newest_first
+             if m.role != "sender" and m.signer_name and m.signature and _same_person(latest.greeting_name, m.signer_name)),
+            None,
+        )
+    if ours is None or not ours.signature:
+        return None
+    lines = [l.strip() for l in ours.signature.split("\n") if l.strip()]
+    if not lines or lines[0] != ours.signer_name:
+        return ours.signer_name
+    kept = [lines[0]] + [l for l in lines[1:] if _signature_line_ok(l)]
+    return "\n".join(kept[:_SIGNATURE_LINES])
+
+
 # --------------------------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------------------------- #
@@ -535,6 +603,7 @@ def _parse_email_thread(body: str, ar_mailboxes: list[str] | None) -> dict[str, 
     if not latest.text_without_signature:
         warnings.append("latest message has no text besides greeting/signature")
 
+    reply_to_name = resolve_reply_to_name(latest, quoted)
     return {
         "schema_version": SCHEMA_VERSION,
         "latest_message": {
@@ -556,7 +625,9 @@ def _parse_email_thread(body: str, ar_mailboxes: list[str] | None) -> dict[str, 
             }
             for m in reversed(quoted)  # contract: oldest first
         ],
-        "reply_to_name": resolve_reply_to_name(latest, quoted),
+        "reply_to_name": reply_to_name,
+        "reply_to_greeting": resolve_reply_to_greeting(reply_to_name, quoted),
+        "our_signature": resolve_our_signature(latest, quoted),
         "parse_info": {
             "format": detect_format(raw, len(quoted)),
             "quoted_messages": len(quoted),

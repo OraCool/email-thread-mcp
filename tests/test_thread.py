@@ -167,3 +167,59 @@ def test_gmail_customer_message_is_sender() -> None:
 
 def test_gmail_attribution_date_is_parsed() -> None:
     assert [m["sent_at"] for m in _gmail()["thread_context"]] == ["2026-09-29T10:50:00", "2026-09-29T11:01:00"]
+
+
+# ---- form of address and our signature ------------------------------------------------------ #
+
+OVERDUE_TABLE_REPLY = """<html><body><div>Dear Ms. Weiss,</div><div>Here is our position on each:</div>
+<ul><li>9000011: Payment already sent on 02.10.2026.</li><li>9000012: We never received this invoice, please send a copy.</li></ul>
+<div>Best regards,</div><div>Jan Berg</div><div>Accounts Payable, Example Parts AB</div>
+<hr><div id="divRplyFwdMsg"><b>From:</b> AR Desk &lt;ar-desk@example.com&gt;<br><b>Sent:</b> Monday, October 5, 2026 9:15 AM<br>
+<b>To:</b> Jan Berg &lt;j.berg@customer.example&gt;<br><b>Subject:</b> Overdue invoices</div>
+<div>Dear Mr. Berg,</div><div>Please find below the open invoices on your account.</div>
+<table><tr><td>Invoice No.</td><td>Amount (EUR)</td></tr><tr><td>9000011</td><td>100.00</td></tr><tr><td>9000012</td><td>100.00</td></tr></table>
+<div>Yours sincerely,</div><div>Clara Weiss</div><div>Finance Department</div><div>Example Trading GmbH</div>
+<div>+49 30 1234 5678</div><div>clara.weiss@example.com</div><div>www.example.com</div></body></html>"""
+
+
+def test_reply_to_greeting_reuses_the_honorific_our_message_used() -> None:
+    result = parse_email_thread(OVERDUE_TABLE_REPLY)
+    assert result["reply_to_name"] == "Jan Berg"
+    assert result["reply_to_greeting"] == "Mr. Berg"
+
+
+def test_our_signature_is_the_block_of_the_person_the_customer_greets() -> None:
+    assert parse_email_thread(OVERDUE_TABLE_REPLY)["our_signature"] == "Clara Weiss\nFinance Department\nExample Trading GmbH"
+
+
+@pytest.mark.parametrize(
+    "body, greeting, signature",
+    [
+        (OUTLOOK_DESKTOP_PLAIN, "Mr. Novak", "Anna Keller"),
+        (GERMAN_OUTLOOK, "Herr Weber", "Anna Keller"),
+        (QUOTED_PLAIN, "Mr. Fischer", None),  # the latest message greets nobody: ours is not identified
+        (ORIGINAL_MESSAGE, "Ms. Rossi", None),  # our message has no closing line, so no signature block
+    ],
+    ids=["outlook-desktop-plain", "german-outlook", "quoted-plain", "original-message"],
+)
+def test_greeting_and_signature_on_other_formats(body: str, greeting: str, signature: str | None) -> None:
+    result = parse_email_thread(body)
+    assert result["reply_to_greeting"] == greeting
+    assert result["our_signature"] == signature
+
+
+def test_no_honorific_is_added_that_no_message_states() -> None:
+    body = OVERDUE_TABLE_REPLY.replace("Dear Mr. Berg,", "Hello,")
+    assert parse_email_thread(body)["reply_to_greeting"] == "Jan Berg"
+
+
+def test_a_customer_message_is_never_ours() -> None:
+    result = parse_email_thread(OVERDUE_TABLE_REPLY, ar_mailboxes=["j.berg@customer.example"])
+    assert result["thread_context"][0]["role"] == "sender"
+    assert result["our_signature"] is None
+    assert result["reply_to_greeting"] == "Jan Berg"
+
+
+def test_ar_mailboxes_identify_our_message_without_a_greeting() -> None:
+    result = parse_email_thread(QUOTED_PLAIN, ar_mailboxes=["ar@example.com"])
+    assert result["our_signature"] == "Anna Keller"
