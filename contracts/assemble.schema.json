@@ -30,6 +30,8 @@
                   "schema",
                   "category_in_list",
                   "category_duplicate",
+                  "action_in_list",
+                  "action_duplicate",
                   "invoice_numbers",
                   "requires_human_review",
                   "greeting_matches_reply_to",

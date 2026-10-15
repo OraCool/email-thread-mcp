@@ -6,7 +6,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from email_thread_mcp.assemble import assemble_output
 from email_thread_mcp.server import assemble_output as assemble_tool
 
-CATEGORIES = [{"id": 1, "name": "Send Statement"}, {"id": 2, "name": "Promise To Pay"}]
+CATEGORIES = [{"id": 1, "name": "Send Statement"}, {"id": 2, "name": "Payment Plan"}]
 
 SCHEMA = {
     "type": "object",
@@ -19,7 +19,7 @@ SCHEMA = {
                 "categories": {
                     "type": "array",
                     "minItems": 1,
-                    "items": {"type": "object", "properties": {"category": {"enum": ["Send Statement", "Promise To Pay"]}}},
+                    "items": {"type": "object", "properties": {"category": {"enum": ["Send Statement", "Payment Plan"]}}},
                 }
             },
         },
@@ -97,3 +97,38 @@ def test_tool_keeps_braces_inside_valid_json() -> None:
     env = _envelope()
     env["draft_response"]["draft_body"] = "Dear Mr. Berg, see {{ref}}."
     assert assemble_tool(json.dumps(env))["draft_response"]["draft_body"].endswith("{{ref}}.")
+
+
+ACTIONS = ["Mail Billing Pdf", "Log Payment Plan", "Match Remittance"]
+
+
+def _actions(*names: str) -> list[dict]:
+    return [{"action": n, "description": "x", "confidence": 0.8} for n in names]
+
+
+def test_action_case_and_underscore_variants_are_corrected() -> None:
+    out = assemble_output(_envelope(suggested_actions=_actions("Log payment plan", "mail_billing_pdf")),
+                          allowed_actions=ACTIONS)
+    assert [a["action"] for a in out["suggested_actions"]] == ["Log Payment Plan", "Mail Billing Pdf"]
+    assert [(i["check"], i["corrected"]) for i in out["validation"]["issues"]] == [("action_in_list", True)] * 2
+    assert out["validation"]["valid"]
+
+
+def test_a_new_action_stays_with_a_warning() -> None:
+    out = assemble_output(_envelope(suggested_actions=_actions("Open Legal Case")), allowed_actions=ACTIONS)
+    assert [a["action"] for a in out["suggested_actions"]] == ["Open Legal Case"]
+    assert [(i["check"], i["severity"], i["corrected"]) for i in out["validation"]["issues"]] == [
+        ("action_in_list", "warning", False)]
+    assert out["validation"]["valid"]
+
+
+def test_an_action_duplicated_by_correction_is_removed() -> None:
+    out = assemble_output(_envelope(suggested_actions=_actions("Match Remittance", "match remittance")), allowed_actions=ACTIONS)
+    assert [a["action"] for a in out["suggested_actions"]] == ["Match Remittance"]
+    assert ("action_duplicate", "$.suggested_actions[1].action") in _checks(out)
+
+
+def test_tool_accepts_actions_as_text() -> None:
+    env = _envelope(suggested_actions=_actions("log payment plan"))
+    out = assemble_tool(json.dumps(env), allowed_actions=json.dumps(ACTIONS))
+    assert out["suggested_actions"][0]["action"] == "Log Payment Plan"

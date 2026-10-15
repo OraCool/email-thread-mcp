@@ -77,6 +77,44 @@ def _check_categories(out: dict[str, Any], allowed: list[str], issues: list[dict
     out["classification"]["categories"] = kept
 
 
+def _check_actions(out: dict[str, Any], allowed: list[str], issues: list[dict[str, Any]]) -> None:
+    """Like categories, except that a name outside the list stays (a new action may be legitimate) and is
+    only a warning. Underscores count as spaces: "send_reminder" is "Send Reminder"."""
+    actions = out.get("suggested_actions")
+    if not isinstance(actions, list):
+        return
+    def norm(name: str) -> str:
+        return normalise_name(name.replace("_", " "))
+    by_norm: dict[str, list[str]] = {}
+    for name in allowed:
+        by_norm.setdefault(norm(name), []).append(name)
+
+    seen: set[str] = set()
+    kept: list[Any] = []
+    for i, item in enumerate(actions):
+        path = f"$.suggested_actions[{i}].action"
+        value = item.get("action") if isinstance(item, dict) else None
+        if not isinstance(value, str):
+            kept.append(item)
+            continue
+        if value not in allowed:
+            matches = by_norm.get(norm(value), [])
+            if len(matches) == 1:
+                issues.append(_issue("action_in_list", "warning", path,
+                                     f"'{value}' differs from the vocabulary's '{matches[0]}' only in case or punctuation; corrected", True))
+                item = {**item, "action": matches[0]}
+                value = matches[0]
+            else:
+                issues.append(_issue("action_in_list", "warning", path,
+                                     f"'{value}' is not in the action vocabulary; kept as a new action, review it", False))
+        if value in seen:
+            issues.append(_issue("action_duplicate", "warning", path, f"'{value}' listed twice; duplicate removed", True))
+            continue
+        seen.add(value)
+        kept.append(item)
+    out["suggested_actions"] = kept
+
+
 def _check_invoices(out: dict[str, Any], issues: list[dict[str, Any]]) -> None:
     data = out.get("extracted_data")
     if not isinstance(data, dict):

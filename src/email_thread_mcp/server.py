@@ -86,6 +86,7 @@ def assemble_output(
     schema: dict[str, Any] | str | None = None,
     allowed_categories: list[Any] | str | None = None,
     thread: dict[str, Any] | str | None = None,
+    allowed_actions: list[Any] | str | None = None,
 ) -> dict[str, Any]:
     """Final step: check an envelope that the workflow assembled from the earlier steps' values,
     without an LLM copying them. Runs the validate_output checks, then validates against `schema`.
@@ -98,10 +99,13 @@ def assemble_output(
         allowed_categories: the request's categories (objects with `name`, or plain names). Optional;
             without it the category check is skipped.
         thread: the parse_email_thread result, used for the greeting check. Optional.
+        allowed_actions: the suggested-action vocabulary (objects with `name`, or plain names). Optional.
+            A case or punctuation variant is corrected; an action outside it stays, with a warning.
     """
     args = {}
     for name, value in (("envelope", envelope), ("schema", schema),
-                        ("allowed_categories", allowed_categories), ("thread", thread)):
+                        ("allowed_categories", allowed_categories), ("thread", thread),
+                        ("allowed_actions", allowed_actions)):
         try:
             args[name] = _coerce(value, name)
         except ToolError:
