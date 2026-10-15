@@ -1,12 +1,13 @@
 # email-thread-mcp
 
-MCP server (stdio) with two deterministic tools for an accounts-receivable (AR) email agent:
+MCP server (stdio) with three deterministic tools for an accounts-receivable (AR) email agent:
 no LLM inside, no network access, no credentials.
 
 | Tool | Role in the agent | Output contract |
 |---|---|---|
 | `parse_email_thread(body, ar_mailboxes?)` | first step: request preprocessing. Splits the raw email body (Outlook/Gmail/Apple HTML or plain text) into the latest message, its signer and greeting, and the quoted history (oldest first) | [`contracts/thread.schema.json`](contracts/thread.schema.json) |
 | `validate_output(output, categories, thread?)` | last step: deterministic checks of the final envelope. Corrects only unambiguous problems (category case/punctuation, duplicates, invoice-number noise, human-review flag); reports the rest | [`contracts/validation.schema.json`](contracts/validation.schema.json) |
+| `assemble_output(envelope, schema?, allowed_categories?, thread?)` | last step of a workflow whose engine assembles the envelope from earlier steps' values with a template, so no model copies them: the `validate_output` checks, then a JSON Schema check. Returns the envelope plus `validation` | [`contracts/assemble.schema.json`](contracts/assemble.schema.json) |
 
 ## Use
 
@@ -17,7 +18,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.3.1"]
+      "args": ["email-thread-mcp@0.4.0"]
     }
   }
 }
@@ -26,12 +27,20 @@ Any MCP client that starts stdio servers can run it with `uvx`:
 Pin a version: a client that keeps the server running may otherwise serve a stale cached build.
 
 Each tool returns one JSON object. Structured arguments (`ar_mailboxes`, `categories`, `output`,
-`thread`) may be passed as values or as text: clients that render arguments through a template
+`envelope`, `schema`, `allowed_categories`, `thread`) may be passed as values or as text: clients that render arguments through a template
 engine first can send JSON or a Python-style repr, and both are accepted.
 
 A typical agent calls `parse_email_thread` first, as preprocessing, and uses `latest_message`,
 `reply_to_name` and `thread_context` in later steps; it calls `validate_output` last, on its final
 envelope.
+
+Use `assemble_output` instead when a workflow engine can build the envelope itself. A model that copies
+identifiers, invoice numbers or a draft into a final JSON answer changes some of them; a template that
+renders each value with a JSON filter does not. Its argument names (`envelope`, `schema`,
+`allowed_categories`, `thread`) are chosen not to clash with the usual step outputs, since some engines
+fill an argument from a context variable of the same name. A failed check does not raise: it is
+reported in `validation`, so the caller still gets the output to review. An argument that is still an
+unrendered template (a variable it uses was not set) raises an error that says so.
 
 For the reply, two fields save the drafting model from reading the whole thread:
 

@@ -14,6 +14,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from .assemble import assemble_output as _assemble_output
 from .thread import parse_email_thread as _parse_email_thread
 from .validate import validate_output as _validate_output
 
@@ -77,6 +78,40 @@ def validate_output(
     return _validate_output(
         _coerce(output, "output"), _coerce(categories, "categories") or [], _coerce(thread, "thread")
     )
+
+
+@mcp.tool()
+def assemble_output(
+    envelope: dict[str, Any] | str,
+    schema: dict[str, Any] | str | None = None,
+    allowed_categories: list[Any] | str | None = None,
+    thread: dict[str, Any] | str | None = None,
+) -> dict[str, Any]:
+    """Final step: check an envelope that the workflow assembled from the earlier steps' values,
+    without an LLM copying them. Runs the validate_output checks, then validates against `schema`.
+    Returns the envelope (with validate_output's safe corrections) plus `validation`:
+    {schema_version, valid, issues}. A failed check is reported there; it does not raise.
+
+    Args:
+        envelope: the final envelope (classification, draft_response, extracted_data, ...).
+        schema: a JSON Schema (draft 2020-12) the envelope must satisfy. Optional.
+        allowed_categories: the request's categories (objects with `name`, or plain names). Optional;
+            without it the category check is skipped.
+        thread: the parse_email_thread result, used for the greeting check. Optional.
+    """
+    args = {}
+    for name, value in (("envelope", envelope), ("schema", schema),
+                        ("allowed_categories", allowed_categories), ("thread", thread)):
+        try:
+            args[name] = _coerce(value, name)
+        except ToolError:
+            if isinstance(value, str) and "{{" in value:
+                raise ToolError(f"{name} is an unrendered template: a variable it uses is not set") from None
+            raise
+    try:
+        return _assemble_output(**args)
+    except ValueError as e:
+        raise ToolError(str(e)) from None
 
 
 def main() -> None:

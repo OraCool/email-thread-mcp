@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:email-thread-mcp:schema:assemble",
+  "title": "AssembledOutput",
+  "description": "Output of the assemble_output MCP tool: the caller's envelope, with validate_output's safe corrections applied, plus a `validation` object. The envelope's own fields are whatever the caller assembled; the optional `schema` argument is what constrains them.",
+  "type": "object",
+  "required": ["validation"],
+  "properties": {
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "valid", "issues"],
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "valid": {
+          "type": "boolean",
+          "description": "True when no issue of severity 'error' remains after the safe corrections. A schema violation is always an error."
+        },
+        "issues": {
+          "type": "array",
+          "description": "validate_output's issues (contracts/validation.schema.json), then one issue with check 'schema' per JSON Schema violation, at most 50.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check", "severity", "path", "message", "corrected"],
+            "properties": {
+              "check": {
+                "type": "string",
+                "enum": [
+                  "schema",
+                  "category_in_list",
+                  "category_duplicate",
+                  "invoice_numbers",
+                  "requires_human_review",
+                  "greeting_matches_reply_to",
+                  "attachment_placeholder"
+                ]
+              },
+              "severity": { "type": "string", "enum": ["error", "warning"] },
+              "path": { "type": "string", "description": "JSON path of the offending value; '$' for a missing required key at the top level" },
+              "message": { "type": "string" },
+              "corrected": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

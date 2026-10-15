@@ -1,13 +1,14 @@
 [project]
 name = "email-thread-mcp"
-version = "0.3.1"
-description = "MCP server for the AR email agent: parses an inbound email thread into the thread contract and validates the agent's output envelope."
+version = "0.4.0"
+description = "MCP server for the AR email agent: parses an inbound email thread into the thread contract, and checks the agent's output envelope, optionally against a JSON Schema."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "dateparser>=1.2,<2",
+    "jsonschema>=4.23,<5",
     "mcp>=2.3,<3",
 ]
 
