@@ -119,3 +119,32 @@ def test_markup_in_the_subject_is_removed() -> None:
     assert result["valid"]
     assert result["output"]["draft_response"]["draft_subject"] == "Re: Delivery question"
     assert _checks(result) == [("draft_subject_markup", "warning", True)]
+
+
+@pytest.mark.parametrize(("draft", "expected"), [
+    ("Dear Mr. Exclusions,\n\nThank you.", "Dear Mr. Berg,\n\nThank you."),
+    ("Dear Ms. Grüßen,\n\nThank you.", "Dear Mr. Berg,\n\nThank you."),
+    ("Sehr geehrter Herr Hinweis,\n\nvielen Dank.", "Sehr geehrter Mr. Berg,\n\nvielen Dank."),
+])
+def test_a_greeting_naming_someone_else_is_replaced(draft: str, expected: str) -> None:
+    thread = {"latest_message": {"greeting_name": "Ms. Lange"}, "reply_to_name": "Jan Berg",
+              "reply_to_greeting": "Mr. Berg"}
+    result = validate_output(_envelope("Payment Commitment", draft=draft), CATEGORIES, thread)
+    assert result["output"]["draft_response"]["draft_body"] == expected
+    assert _checks(result) == [("greeting_matches_reply_to", "warning", True)]
+    assert result["valid"]
+
+
+@pytest.mark.parametrize("draft", ["Dear Eva,\n\nThank you.", "Dear Ms. Novak,\n\nThank you.", "Dear Eva Novak,\n\nThanks."])
+def test_a_greeting_with_part_of_the_name_is_kept(draft: str) -> None:
+    thread = {"latest_message": {}, "reply_to_name": "Eva Novak", "reply_to_greeting": "Eva Novak"}
+    result = validate_output(_envelope("Payment Commitment", draft=draft), CATEGORIES, thread)
+    assert result["output"]["draft_response"]["draft_body"] == draft
+    assert result["issues"] == []
+
+
+def test_no_known_address_means_no_replacement() -> None:
+    thread = {"latest_message": {}, "reply_to_name": None, "reply_to_greeting": None}
+    result = validate_output(_envelope("Payment Commitment", draft="Dear Sir or Madam,\n\nThanks."), CATEGORIES, thread)
+    assert result["output"]["draft_response"]["draft_body"] == "Dear Sir or Madam,\n\nThanks."
+    assert result["issues"] == []

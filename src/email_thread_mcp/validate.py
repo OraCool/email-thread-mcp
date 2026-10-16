@@ -13,6 +13,8 @@ import re
 import unicodedata
 from typing import Any
 
+from .thread import _GREETING
+
 SCHEMA_VERSION = "1.0"
 
 _DATE_LIKE = re.compile(r"^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$")
@@ -168,16 +170,46 @@ def _check_draft(out: dict[str, Any], thread: dict[str, Any] | None, issues: lis
         latest = thread.get("latest_message") or {}
         ours = latest.get("greeting_name")
         reply_to = thread.get("reply_to_name")
-        if ours and _surname(ours) and _surname(ours) in first_line and (not reply_to or _surname(reply_to) != _surname(ours)):
+        address = thread.get("reply_to_greeting")
+        fixed = _correct_greeting(first_line, address, reply_to)
+        if fixed is not None:
+            draft["draft_body"] = body = body.replace(first_line, fixed, 1)
+            issues.append(_issue("greeting_matches_reply_to", "warning", "$.draft_response.draft_body",
+                                 f"the greeting {first_line!r} does not name {address!r}; replaced with {fixed!r}", True))
+        elif ours and _surname(ours) and _surname(ours) in first_line and (not reply_to or _surname(reply_to) != _surname(ours)):
             issues.append(_issue("greeting_matches_reply_to", "warning", "$.draft_response.draft_body",
                                  f"the draft greets '{ours}', who is the AR team member the customer wrote to", False))
-        elif reply_to and _surname(reply_to) and _surname(reply_to) not in first_line:
+        elif reply_to and _name_tokens(reply_to) and not _name_tokens(reply_to) & _name_tokens(first_line):
             issues.append(_issue("greeting_matches_reply_to", "warning", "$.draft_response.draft_body",
                                  f"the draft does not greet '{reply_to}', the person to reply to", False))
 
     if _PROMISES_DOCUMENT.search(body) and not _PLACEHOLDER.search(body):
         issues.append(_issue("attachment_placeholder", "warning", "$.draft_response.draft_body",
                              "the draft promises a document but has no '[... attached]' placeholder", False))
+
+
+def _name_tokens(name: str) -> set[str]:
+    return set(re.findall(r"\w+", normalise_name(_HONORIFIC.sub("", name.strip()))))
+
+
+def _correct_greeting(first_line: str, address: Any, reply_to: Any) -> str | None:
+    """The greeting line with its name replaced by `address`, or None when it needs no correction.
+
+    Only a greeting that shares no name part with the person to reply to is replaced, so a draft
+    that greets them by first name ("Dear Eva,") is kept as written.
+    """
+    if not isinstance(address, str) or not address.strip():
+        return None
+    m = _GREETING.match(first_line.strip())
+    if not m or not m.group("name").strip():
+        return None
+    greeted = _name_tokens(m.group("name"))
+    known = _name_tokens(address) | (_name_tokens(reply_to) if isinstance(reply_to, str) else set())
+    if greeted & known:
+        return None
+    line = first_line.strip()
+    start, end = m.span("name")
+    return line[:start] + address.strip() + line[end:]
 
 
 def _surname(name: str) -> str:
