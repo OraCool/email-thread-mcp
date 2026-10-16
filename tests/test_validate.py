@@ -93,3 +93,29 @@ def test_coerce_accepts_json_and_python_repr() -> None:
 def test_coerce_rejects_text_with_a_tool_error_naming_the_argument() -> None:
     with pytest.raises(ToolError, match="output is neither JSON nor a Python literal"):
         _coerce("{not json", "output")
+
+
+def test_an_empty_draft_is_an_error() -> None:
+    env = _envelope("Payment Commitment")
+    env["draft_response"].update(draft_subject=None, draft_body=None)
+    thread = {"latest_message": {}, "reply_to_name": "Clara Bauer"}
+    result = validate_output(env, CATEGORIES, thread)
+    assert not result["valid"]
+    assert [(i["check"], i["path"]) for i in result["issues"]] == [
+        ("draft_missing", "$.draft_response.draft_subject"),
+        ("draft_missing", "$.draft_response.draft_body"),
+    ]
+
+
+def test_a_blank_body_is_an_error() -> None:
+    result = validate_output(_envelope("Payment Commitment", draft="  \n"), CATEGORIES)
+    assert ("draft_missing", "error", False) in _checks(result)
+
+
+def test_markup_in_the_subject_is_removed() -> None:
+    env = _envelope("Payment Commitment")
+    env["draft_response"]["draft_subject"] = "Re: <email_subject>Re: Delivery question</email_subject>\n"
+    result = validate_output(env, CATEGORIES)
+    assert result["valid"]
+    assert result["output"]["draft_response"]["draft_subject"] == "Re: Delivery question"
+    assert _checks(result) == [("draft_subject_markup", "warning", True)]

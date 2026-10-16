@@ -21,6 +21,8 @@ _PROMISES_DOCUMENT = re.compile(
     re.IGNORECASE,
 )
 _PLACEHOLDER = re.compile(r"\[[^\]]*attached\]", re.IGNORECASE)
+_MARKUP_TAG = re.compile(r"</?[A-Za-z][\w-]*>")
+_REPLY_PREFIXES = re.compile(r"^((?:re|aw|sv|antw)\s*:\s*)(?:(?:re|aw|sv|antw)\s*:\s*)+", re.IGNORECASE)
 _HONORIFIC = re.compile(r"^(mr|ms|mrs|dr|frau|herr)\.?\s+", re.IGNORECASE)
 
 
@@ -146,8 +148,21 @@ def _check_draft(out: dict[str, Any], thread: dict[str, Any] | None, issues: lis
         draft["requires_human_review"] = True
         issues.append(_issue("requires_human_review", "warning", "$.draft_response.requires_human_review",
                              "must always be true; set to true", True))
-    body = draft.get("draft_body") or ""
-    first_line = body.strip().split("\n", 1)[0] if body.strip() else ""
+    subject = draft.get("draft_subject")
+    if isinstance(subject, str):
+        cleaned = _REPLY_PREFIXES.sub(lambda m: m.group(1).strip() + " ", " ".join(_MARKUP_TAG.sub("", subject).split()))
+        if cleaned != subject:
+            draft["draft_subject"] = cleaned
+            issues.append(_issue("draft_subject_markup", "warning", "$.draft_response.draft_subject",
+                                 f"removed markup tags, line breaks or a repeated reply prefix from {subject!r}", True))
+    missing = [k for k in ("draft_subject", "draft_body") if not isinstance(draft.get(k), str) or not draft[k].strip()]
+    for key in missing:
+        issues.append(_issue("draft_missing", "error", f"$.draft_response.{key}",
+                             f"{key} is empty; the drafting step produced no usable answer", False))
+    if "draft_body" in missing:
+        return
+    body = draft["draft_body"]
+    first_line = body.strip().split("\n", 1)[0]
 
     if thread:
         latest = thread.get("latest_message") or {}

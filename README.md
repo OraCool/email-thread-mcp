@@ -6,7 +6,7 @@ no LLM inside, no network access, no credentials.
 | Tool | Role in the agent | Output contract |
 |---|---|---|
 | `parse_email_thread(body, ar_mailboxes?)` | first step: request preprocessing. Splits the raw email body (Outlook/Gmail/Apple HTML or plain text) into the latest message, its signer and greeting, and the quoted history (oldest first). A table row of short cells becomes one line, cells joined by ` \| `, so an invoice stays next to its date and amount | [`contracts/thread.schema.json`](contracts/thread.schema.json) |
-| `validate_output(output, categories, thread?)` | last step: deterministic checks of the final envelope. Corrects only unambiguous problems (category case/punctuation, duplicates, invoice-number noise, human-review flag); reports the rest | [`contracts/validation.schema.json`](contracts/validation.schema.json) |
+| `validate_output(output, categories, thread?)` | last step: deterministic checks of the final envelope. Corrects only unambiguous problems (category case/punctuation, duplicates, invoice-number noise, human-review flag, markup or a repeated reply prefix in the draft subject); reports the rest, an empty draft as an error | [`contracts/validation.schema.json`](contracts/validation.schema.json) |
 | `assemble_output(envelope, schema?, allowed_categories?, thread?, allowed_actions?)` | last step of a workflow whose engine assembles the envelope from earlier steps' values with a template, so no model copies them: the `validate_output` checks, then a JSON Schema check. Returns the envelope plus `validation` | [`contracts/assemble.schema.json`](contracts/assemble.schema.json) |
 
 ## Use
@@ -18,7 +18,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.5.1"]
+      "args": ["email-thread-mcp@0.5.2"]
     }
   }
 }

@@ -31,7 +31,9 @@
               "invoice_numbers",
               "requires_human_review",
               "greeting_matches_reply_to",
-              "attachment_placeholder"
+              "attachment_placeholder",
+              "draft_missing",
+              "draft_subject_markup"
             ]
           },
           "severity": {
