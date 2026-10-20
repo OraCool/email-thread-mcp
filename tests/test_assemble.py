@@ -122,6 +122,21 @@ def test_a_new_action_stays_with_a_warning() -> None:
     assert out["validation"]["valid"]
 
 
+def test_a_new_action_gets_the_vocabulary_form() -> None:
+    out = assemble_output(_envelope(suggested_actions=_actions("open_legal_case", "review AR  balance")),
+                          allowed_actions=ACTIONS)
+    assert [a["action"] for a in out["suggested_actions"]] == ["Open Legal Case", "Review AR Balance"]
+    assert [(i["check"], i["corrected"]) for i in out["validation"]["issues"]] == [
+        ("action_format", True), ("action_in_list", False)] * 2
+
+
+def test_a_new_action_duplicated_by_formatting_is_removed() -> None:
+    out = assemble_output(_envelope(suggested_actions=_actions("Open Legal Case", "open_legal_case")),
+                          allowed_actions=ACTIONS)
+    assert [a["action"] for a in out["suggested_actions"]] == ["Open Legal Case"]
+    assert ("action_duplicate", "$.suggested_actions[1].action") in _checks(out)
+
+
 def test_an_action_duplicated_by_correction_is_removed() -> None:
     out = assemble_output(_envelope(suggested_actions=_actions("Match Remittance", "match remittance")), allowed_actions=ACTIONS)
     assert [a["action"] for a in out["suggested_actions"]] == ["Match Remittance"]

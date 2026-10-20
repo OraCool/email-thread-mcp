@@ -81,9 +81,17 @@ def _check_categories(out: dict[str, Any], allowed: list[str], issues: list[dict
     out["classification"]["categories"] = kept
 
 
+def _format_new_action(name: str) -> str:
+    """A new action in the vocabulary's form: underscores as spaces, every word starting uppercase.
+    Only first letters change, so "AR" or "PDF" stay as written."""
+    words = name.replace("_", " ").split()
+    return " ".join(w[:1].upper() + w[1:] for w in words)
+
+
 def _check_actions(out: dict[str, Any], allowed: list[str], issues: list[dict[str, Any]]) -> None:
     """Like categories, except that a name outside the list stays (a new action may be legitimate) and is
-    only a warning. Underscores count as spaces: "send_reminder" is "Send Reminder"."""
+    only a warning. Underscores count as spaces: "send_reminder" is "Send Reminder". A new action is
+    also put in the vocabulary's form, so no underscore or lowercase word reaches the user."""
     actions = out.get("suggested_actions")
     if not isinstance(actions, list):
         return
@@ -109,6 +117,12 @@ def _check_actions(out: dict[str, Any], allowed: list[str], issues: list[dict[st
                 item = {**item, "action": matches[0]}
                 value = matches[0]
             else:
+                formatted = _format_new_action(value)
+                if formatted != value:
+                    issues.append(_issue("action_format", "warning", path,
+                                         f"'{value}' rewritten as '{formatted}': no underscores, every word starts uppercase", True))
+                    item = {**item, "action": formatted}
+                    value = formatted
                 issues.append(_issue("action_in_list", "warning", path,
                                      f"'{value}' is not in the action vocabulary; kept as a new action, review it", False))
         if value in seen:

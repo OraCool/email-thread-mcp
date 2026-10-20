@@ -41,7 +41,8 @@ renders each value with a JSON filter does not. Its argument names (`envelope`, 
 fill an argument from a context variable of the same name. A failed check does not raise: it is
 reported in `validation`, so the caller still gets the output to review. With `allowed_actions` (the
 suggested-action vocabulary), an action that differs from a listed one only in case, punctuation or
-underscores is corrected; one outside the list is kept as a new action, with a warning. An argument that is still an
+underscores is corrected; one outside the list is kept as a new action, with a warning, after its
+underscores become spaces and every word gets an uppercase first letter (`send_reminder` → `Send Reminder`). An argument that is still an
 unrendered template (a variable it uses was not set) raises an error that says so.
 With `thread`, a draft greeting that shares no part of a name with `reply_to_greeting` or
 `reply_to_name` ("Dear Mr. Smith," when the customer is Jan Berg) has that name replaced by
