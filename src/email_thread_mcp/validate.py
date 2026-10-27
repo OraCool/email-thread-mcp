@@ -218,6 +218,15 @@ def _check_invoices(out: dict[str, Any], issues: list[dict[str, Any]]) -> None:
     data["invoice_numbers"] = clean or None
 
 
+def _only_no_ar_action(out: dict[str, Any]) -> bool:
+    """True when the answer's suggested actions are exactly one, "No AR Action" (case and punctuation aside)."""
+    actions = out.get("suggested_actions")
+    if not isinstance(actions, list) or len(actions) != 1 or not isinstance(actions[0], dict):
+        return False
+    name = actions[0].get("action")
+    return isinstance(name, str) and normalise_name(name.replace("_", " ")) == "no ar action"
+
+
 def _check_draft(out: dict[str, Any], thread: dict[str, Any] | None, issues: list[dict[str, Any]]) -> None:
     draft = out.get("draft_response")
     if not isinstance(draft, dict):
@@ -234,6 +243,8 @@ def _check_draft(out: dict[str, Any], thread: dict[str, Any] | None, issues: lis
             issues.append(_issue("draft_subject_markup", "warning", "$.draft_response.draft_subject",
                                  f"removed markup tags, line breaks or a repeated reply prefix from {subject!r}", True))
     missing = [k for k in ("draft_subject", "draft_body") if not isinstance(draft.get(k), str) or not draft[k].strip()]
+    if missing and len(missing) == 2 and _only_no_ar_action(out):
+        return  # an email that needs nothing gets no draft: nothing to review or send by mistake
     for key in missing:
         issues.append(_issue("draft_missing", "error", f"$.draft_response.{key}",
                              f"{key} is empty; the drafting step produced no usable answer", False))

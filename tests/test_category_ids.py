@@ -98,3 +98,28 @@ def test_tool_accepts_categories_and_language_as_text() -> None:
 def test_tool_reports_a_bad_category_list_as_a_tool_error() -> None:
     with pytest.raises(ToolError, match="integer id"):
         assemble_tool(_envelope(37), allowed_categories=[{"id": "x", "description": "y"}])
+
+
+def _no_draft(actions: list[str]) -> dict:
+    env = _envelope(42)
+    env["draft_response"].update({"draft_subject": "", "draft_body": ""})
+    env["suggested_actions"] = [{"action": a, "description": "x", "confidence": 0.9} for a in actions]
+    return env
+
+
+def test_no_draft_is_accepted_when_the_only_action_is_no_ar_action() -> None:
+    out = assemble_output(_no_draft(["No AR Action"]), allowed_categories=CATEGORIES)
+    assert out["validation"]["valid"], out["validation"]["issues"]
+
+
+@pytest.mark.parametrize("actions", [[], ["Send Invoice Copy"], ["No AR Action", "Send Invoice Copy"]])
+def test_no_draft_is_still_an_error_otherwise(actions) -> None:
+    out = assemble_output(_no_draft(actions), allowed_categories=CATEGORIES)
+    assert not out["validation"]["valid"]
+    assert {i["check"] for i in out["validation"]["issues"]} >= {"draft_missing"}
+
+
+def test_a_half_empty_draft_is_an_error_even_with_no_ar_action() -> None:
+    env = _no_draft(["No AR Action"]); env["draft_response"]["draft_subject"] = "Re: x"
+    out = assemble_output(env, allowed_categories=CATEGORIES)
+    assert [i["path"] for i in out["validation"]["issues"] if i["check"] == "draft_missing"] == ["$.draft_response.draft_body"]
