@@ -28,6 +28,7 @@
             "enum": [
               "category_in_list",
               "category_duplicate",
+              "language_matches_preference",
               "invoice_numbers",
               "requires_human_review",
               "greeting_matches_reply_to",

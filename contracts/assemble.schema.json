@@ -30,6 +30,7 @@
                   "schema",
                   "category_in_list",
                   "category_duplicate",
+                  "language_matches_preference",
                   "action_in_list",
                   "action_format",
                   "action_duplicate",

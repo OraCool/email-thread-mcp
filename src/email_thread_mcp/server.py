@@ -65,19 +65,27 @@ def validate_output(
     output: dict[str, Any] | str,
     categories: list[Any] | str,
     thread: dict[str, Any] | str | None = None,
+    expected_language: str | None = None,
 ) -> dict[str, Any]:
-    """Check the agent's output envelope: category names must come from the request's list,
+    """Check the agent's output envelope: categories must come from the request's list,
     invoice numbers clean, the draft greets the right person and marks promised attachments.
     Safe corrections are applied to the returned `output`; everything else is reported in `issues`.
 
     Args:
         output: the final envelope (classification, draft_response, extracted_data, ...).
-        categories: the allowed categories (objects with `name`, or plain names).
+        categories: the allowed categories: objects with `name` (or plain names), matched by name; or
+            objects with an integer `id` and no `name`, matched by id.
         thread: the parse_email_thread result, used for the greeting check. Optional.
+        expected_language: the requested response language (ISO 639-1). Optional; when given,
+            `language` and `draft_response.language` must name it.
     """
-    return _validate_output(
-        _coerce(output, "output"), _coerce(categories, "categories") or [], _coerce(thread, "thread")
-    )
+    try:
+        return _validate_output(
+            _coerce(output, "output"), _coerce(categories, "categories") or [], _coerce(thread, "thread"),
+            expected_language or None,
+        )
+    except ValueError as e:
+        raise ToolError(str(e)) from None
 
 
 @mcp.tool()
@@ -87,6 +95,7 @@ def assemble_output(
     allowed_categories: list[Any] | str | None = None,
     thread: dict[str, Any] | str | None = None,
     allowed_actions: list[Any] | str | None = None,
+    expected_language: str | None = None,
 ) -> dict[str, Any]:
     """Final step: check an envelope that the workflow assembled from the earlier steps' values,
     without an LLM copying them. Runs the validate_output checks, then validates against `schema`.
@@ -96,11 +105,14 @@ def assemble_output(
     Args:
         envelope: the final envelope (classification, draft_response, extracted_data, ...).
         schema: a JSON Schema (draft 2020-12) the envelope must satisfy. Optional.
-        allowed_categories: the request's categories (objects with `name`, or plain names). Optional;
-            without it the category check is skipped.
+        allowed_categories: the request's categories. Optional; without it the category check is
+            skipped. Objects with `name` (or plain names) are matched by name; objects with an integer
+            `id` and no `name` by id, where only a digit string naming an allowed id is corrected.
         thread: the parse_email_thread result, used for the greeting check. Optional.
         allowed_actions: the suggested-action vocabulary (objects with `name`, or plain names). Optional.
             A case or punctuation variant is corrected; an action outside it stays, with a warning.
+        expected_language: the requested response language (ISO 639-1). Optional; when given,
+            `language` and `draft_response.language` must name it. A mismatch is an error, not corrected.
     """
     args = {}
     for name, value in (("envelope", envelope), ("schema", schema),
@@ -112,6 +124,7 @@ def assemble_output(
             if isinstance(value, str) and "{{" in value:
                 raise ToolError(f"{name} is an unrendered template: a variable it uses is not set") from None
             raise
+    args["expected_language"] = expected_language or None
     try:
         return _assemble_output(**args)
     except ValueError as e:

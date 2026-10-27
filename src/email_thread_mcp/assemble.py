@@ -16,7 +16,15 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
 
-from .validate import _category_names, _check_actions, _check_categories, _check_draft, _check_invoices
+from .validate import (
+    _allowed_categories,
+    _category_names,
+    _check_actions,
+    _check_categories,
+    _check_draft,
+    _check_invoices,
+    _check_language,
+)
 
 SCHEMA_VERSION = "1.0"
 
@@ -50,15 +58,18 @@ def assemble_output(
     allowed_categories: list[Any] | None = None,
     thread: dict[str, Any] | None = None,
     allowed_actions: list[Any] | None = None,
+    expected_language: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(envelope, dict):
         raise ValueError("envelope must be a JSON object")
     out = copy.deepcopy(envelope)
     issues: list[dict[str, Any]] = []
     if allowed_categories:
-        _check_categories(out, _category_names(allowed_categories), issues)
+        _check_categories(out, _allowed_categories(allowed_categories), issues)
     if allowed_actions:
         _check_actions(out, _category_names(allowed_actions), issues)
+    if expected_language:
+        _check_language(out, expected_language, issues)
     _check_invoices(out, issues)
     _check_draft(out, thread, issues)
     # After the corrections, so a category whose case was fixed does not fail the schema's enum.

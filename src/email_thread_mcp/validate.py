@@ -45,11 +45,59 @@ def _category_names(categories: list[Any]) -> list[str]:
     return [c["name"] if isinstance(c, dict) else str(c) for c in categories]
 
 
-def _check_categories(out: dict[str, Any], allowed: list[str], issues: list[dict[str, Any]]) -> None:
+def _allowed_categories(categories: list[Any]) -> list[str] | list[int]:
+    """The values a category may take. A request whose objects carry an `id` and no `name` is matched
+    by id (the classifier emits the integer); otherwise by name, as before 0.6.0."""
+    if categories and all(isinstance(c, dict) and "name" not in c for c in categories):
+        ids = [c.get("id") for c in categories]
+        if not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+            raise ValueError("every category without a name needs an integer id")
+        return ids
+    try:
+        return _category_names(categories)
+    except KeyError:
+        raise ValueError("every category needs a name, or every category an integer id and no name") from None
+
+
+def _check_category_ids(cats: list[Any], allowed: list[int], issues: list[dict[str, Any]]) -> list[Any]:
+    """Ids are compared exactly. The one safe correction is a digit string naming an allowed id
+    ("36" -> 36); there is no near match for a number, so anything else is an error."""
+    allowed_set = set(allowed)
+    seen: set[int] = set()
+    kept: list[Any] = []
+    for i, item in enumerate(cats):
+        path = f"$.classification.categories[{i}].category"
+        value = item.get("category") if isinstance(item, dict) else None
+        if isinstance(value, str) and value.strip().isdigit() and int(value) in allowed_set:
+            issues.append(_issue("category_in_list", "warning", path,
+                                 f"'{value}' is the id {int(value)} written as a string; corrected", True))
+            value = int(value)
+            item = {**item, "category": value}
+        if not isinstance(value, int) or isinstance(value, bool):
+            issues.append(_issue("category_in_list", "error", path, "category is not an integer id", False))
+            kept.append(item)
+            continue
+        if value not in allowed_set:
+            issues.append(_issue("category_in_list", "error", path,
+                                 f"{value} is not an id in the request's category list", False))
+        if value in seen:
+            issues.append(_issue("category_duplicate", "warning", path, f"{value} listed twice; duplicate removed", True))
+            continue
+        seen.add(value)
+        kept.append(item)
+    return kept
+
+
+def _check_categories(out: dict[str, Any], allowed: list[str] | list[int], issues: list[dict[str, Any]]) -> None:
     cats = (out.get("classification") or {}).get("categories")
     if not isinstance(cats, list):
         issues.append(_issue("category_in_list", "error", "$.classification.categories", "missing categories list", False))
         return
+    ids = [a for a in allowed if isinstance(a, int)]
+    if ids:
+        out["classification"]["categories"] = _check_category_ids(cats, ids, issues)
+        return
+    allowed = [a for a in allowed if isinstance(a, str)]
     by_norm: dict[str, list[str]] = {}
     for name in allowed:
         by_norm.setdefault(normalise_name(name), []).append(name)
@@ -79,6 +127,20 @@ def _check_categories(out: dict[str, Any], allowed: list[str], issues: list[dict
         seen.add(value)
         kept.append(item)
     out["classification"]["categories"] = kept
+
+
+def _check_language(out: dict[str, Any], expected: str, issues: list[dict[str, Any]]) -> None:
+    """Both language fields must name the requested response language. A mismatch is reported, never
+    relabelled: a draft written in another language would only be hidden by a corrected label."""
+    want = expected.strip().casefold()
+    draft = out.get("draft_response")
+    fields = [("$.language", out.get("language"))]
+    if isinstance(draft, dict):
+        fields.append(("$.draft_response.language", draft.get("language")))
+    for path, value in fields:
+        if not isinstance(value, str) or value.strip().casefold() != want:
+            issues.append(_issue("language_matches_preference", "error", path,
+                                 f"language is {value!r}, the request asked for '{want}'", False))
 
 
 def _format_new_action(name: str) -> str:
@@ -231,10 +293,17 @@ def _surname(name: str) -> str:
     return tokens[-1] if tokens else ""
 
 
-def validate_output(output: dict[str, Any], categories: list[Any], thread: dict[str, Any] | None = None) -> dict[str, Any]:
+def validate_output(
+    output: dict[str, Any],
+    categories: list[Any],
+    thread: dict[str, Any] | None = None,
+    expected_language: str | None = None,
+) -> dict[str, Any]:
     out = copy.deepcopy(output)
     issues: list[dict[str, Any]] = []
-    _check_categories(out, _category_names(categories), issues)
+    _check_categories(out, _allowed_categories(categories), issues)
+    if expected_language:
+        _check_language(out, expected_language, issues)
     _check_invoices(out, issues)
     _check_draft(out, thread, issues)
     return {
