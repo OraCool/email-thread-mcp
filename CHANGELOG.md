@@ -5,11 +5,14 @@
 The draft reply is written in the incoming email's language; every other free text stays in the
 requested `language_preference`.
 
-- New tool `detect_language(text)`: names the language of one text, typically
-  `parse_email_thread`'s `latest_message.text`. Returns `{schema_version, language, status, ranking}`;
-  `status` is `detected` (ISO 639-1 code) or `undecided` (`language` null: under four words, under 90%
-  confidence, or a language without an ISO 639-1 code), and the caller then keeps its default.
-  Dialect labels count towards their language (`ary`, `arz` -> `ar`). Contract:
+- New tool `detect_language(text, fallback?)`: names the language of one text, typically
+  `parse_email_thread`'s `latest_message.text`. Returns `{schema_version, language, status, ranking,
+  resolved_language}`; `status` is `detected` (ISO 639-1 code) or `undecided` (`language` null: under
+  four words, under 90% confidence, or a language without an ISO 639-1 code).
+  Dialect labels count towards their language (`ary`, `arz` -> `ar`). With the optional `fallback`
+  (the request's language preference), `resolved_language` is the detected language, else the
+  fallback when it is an ISO 639-1 code, else null: a key of its own, so a workflow engine that merges
+  results into one context keeps it when a later step writes `language`. Contract:
   `contracts/detect_language.schema.json`.
 - `validate_output` and `assemble_output`: optional `expected_draft_language`, checked against
   `draft_response.language`; `expected_language` is then checked against `language` only. Without it

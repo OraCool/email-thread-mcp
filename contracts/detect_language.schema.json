@@ -2,14 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/OraCool/email-thread-mcp/contracts/detect_language.schema.json",
   "title": "detect_language result",
-  "description": "Output of the detect_language MCP tool: the language of one text, typically parse_email_thread's latest_message.text, so the draft can be written in the customer's language. Undecided means the caller keeps its default language.",
+  "description": "Output of the detect_language MCP tool: the language of one text, typically parse_email_thread's latest_message.text, so the draft can be written in the customer's language. Undecided means resolved_language falls back to the caller's fallback language.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "language",
     "status",
-    "ranking"
+    "ranking",
+    "resolved_language"
   ],
   "properties": {
     "schema_version": {
@@ -53,6 +54,14 @@
           }
         }
       }
+    },
+    "resolved_language": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-z]{2}$",
+      "description": "The language to write the draft in: `language` when status is detected; otherwise the `fallback` argument, lowercased, when it is an ISO 639-1 code; otherwise null. Equals `language` when no fallback is given. A key of its own, so a workflow that merges tool results into one context keeps it when a later step writes `language`."
     }
   }
 }

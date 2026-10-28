@@ -62,6 +62,15 @@ _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 # their probability into that language, so an Arabic text split between ar, ary and arz still counts.
 _ISO_639_1 = {"ary": "ar", "arz": "ar", "uzs": "uz", "hbo": "he", "grc": "el"}
 _RANKING_SIZE = 3
+# The ISO 639-1 codes, for detect_language's fallback: two letters alone ("xx") are not a language.
+_ISO_639_1_CODES = frozenset("""
+    aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co cr cs cu cv cy da de
+    dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id
+    ie ig ii ik io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu
+    lv mg mh mi mk ml mn mr ms mt my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu
+    rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl tn to tr
+    ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu
+""".split())
 
 # Scripts by the first word of a letter's Unicode name. Latin is allowed in every language: product
 # names, identifiers and English terms are written in it everywhere.
@@ -129,9 +138,10 @@ def detect(text: str) -> tuple[str | None, list[tuple[str, float]]]:
     return ranking[0][0], ranking
 
 
-def detect_language(text: str) -> dict[str, Any]:
+def detect_language(text: str, fallback: str | None = None) -> dict[str, Any]:
     """The language of one text (an incoming email), or undecided: too short, below the confidence
-    `check_language` uses, or a language without an ISO 639-1 code. Output shape:
+    `check_language` uses, or a language without an ISO 639-1 code. `resolved_language` is the
+    detected language, else `fallback` when it is an ISO 639-1 code, else None. Output shape:
     contracts/detect_language.schema.json (schema_version 1.0)."""
     _, ranking = detect(text if isinstance(text, str) else "")
     totals: dict[str, float] = {}
@@ -140,11 +150,15 @@ def detect_language(text: str) -> dict[str, Any]:
         totals[code] = totals.get(code, 0.0) + p
     top = sorted(totals.items(), key=lambda item: -item[1])[:_RANKING_SIZE]
     found = top[0][0] if top and top[0][1] >= _MIN_CONFIDENCE and len(top[0][0]) == 2 else None
+    default = fallback.strip().casefold() if isinstance(fallback, str) else None
     return {
         "schema_version": "1.0",
         "language": found,
         "status": "detected" if found else "undecided",
         "ranking": [{"language": lang, "probability": round(p, 3)} for lang, p in top],
+        # A key of its own: a workflow that merges results into one context keeps it when a later
+        # step writes `language`.
+        "resolved_language": found or (default if default in _ISO_639_1_CODES else None),
     }
 
 

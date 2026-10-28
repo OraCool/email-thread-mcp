@@ -36,7 +36,8 @@ def test_an_email_language_is_detected(lang, text) -> None:
 @pytest.mark.parametrize("text", ["Thanks, noted", "Danke!", "", "INV-0001 / 24,770.50 EUR", "[Remittance PDF attached]"])
 def test_a_short_reply_is_undecided(text) -> None:
     out = detect_language(text)
-    assert out == {"schema_version": "1.0", "language": None, "status": "undecided", "ranking": []}
+    assert out == {"schema_version": "1.0", "language": None, "status": "undecided", "ranking": [],
+                   "resolved_language": None}
     Draft202012Validator(DETECT_SCHEMA).validate(out)
 
 
@@ -50,6 +51,35 @@ def test_dialect_labels_count_towards_their_language() -> None:
     # The detector splits Arabic between ar, ary and arz; summed, the text is clearly Arabic.
     ranking = detect_language(EMAILS["ar"])["ranking"]
     assert [r["language"] for r in ranking].count("ar") == 1 and ranking[0]["probability"] >= 0.9
+
+
+def test_a_detected_language_wins_over_the_fallback() -> None:
+    out = detect_language(EMAILS["fr"], fallback="en")
+    assert (out["language"], out["status"], out["resolved_language"]) == ("fr", "detected", "fr")
+    Draft202012Validator(DETECT_SCHEMA).validate(out)
+
+
+@pytest.mark.parametrize("fallback,resolved", [("de", "de"), (" EN ", "en"), ("nb", "nb")])
+def test_an_undecided_text_resolves_to_the_fallback(fallback, resolved) -> None:
+    out = detect_language("Thanks, noted", fallback=fallback)
+    assert (out["language"], out["status"], out["resolved_language"]) == (None, "undecided", resolved)
+    Draft202012Validator(DETECT_SCHEMA).validate(out)
+
+
+def test_without_a_fallback_the_resolved_language_is_the_detection() -> None:
+    assert detect_language("Thanks, noted")["resolved_language"] is None
+    assert detect_language(EMAILS["pl"])["resolved_language"] == "pl"
+
+
+@pytest.mark.parametrize("fallback", ["XX", "xx", "", "  ", "eng", "en-GB", "e", None])
+def test_a_fallback_that_is_not_an_iso_639_1_code_resolves_to_null(fallback) -> None:
+    assert detect_language("Thanks, noted", fallback=fallback)["resolved_language"] is None
+
+
+def test_tool_passes_the_fallback_and_refuses_an_unrendered_one() -> None:
+    assert detect_language_tool("Danke!", fallback="DE")["resolved_language"] == "de"
+    with pytest.raises(ToolError, match="unrendered template"):
+        detect_language_tool("Danke!", fallback="{{language_preference}}")
 
 
 def test_tool_refuses_an_unrendered_text() -> None:

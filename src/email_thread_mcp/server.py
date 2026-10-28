@@ -220,19 +220,24 @@ def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def detect_language(text: str) -> dict[str, Any]:
+def detect_language(text: str, fallback: str | None = None) -> dict[str, Any]:
     """Name the language of one text, typically parse_email_thread's latest_message.text, so the draft
     can be written in the language the customer wrote in. Returns {schema_version, language: ISO 639-1
-    code or null, status: detected|undecided, ranking: [{language, probability}], at most 3}. Undecided
-    (language null) for a text under four words ("Thanks, noted"), one the detector is under 90% sure
-    of, or a language without an ISO 639-1 code; the caller then keeps its default language.
+    code or null, status: detected|undecided, ranking: [{language, probability}], at most 3,
+    resolved_language}. Undecided (language null) for a text under four words ("Thanks, noted"), one
+    the detector is under 90% sure of, or a language without an ISO 639-1 code. resolved_language is
+    the detected language, else `fallback` (lowercased) when it is an ISO 639-1 code, else null.
 
     Args:
         text: the text to identify. An empty text is undecided; an unrendered template placeholder is
             refused with an error.
+        fallback: the language to resolve to when undecided, usually the request's language_preference
+            (ISO 639-1). Optional; a value that is not an ISO 639-1 code ("XX", "") resolves to null, an
+            unrendered template placeholder is refused with an error.
     """
     _require_rendered(text, "text")
-    return _detect_language(text if isinstance(text, str) else "")
+    _require_rendered(fallback, "fallback")
+    return _detect_language(text if isinstance(text, str) else "", fallback)
 
 
 def main() -> None:
