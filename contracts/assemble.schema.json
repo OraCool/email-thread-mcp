@@ -9,9 +9,9 @@
     "validation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "valid", "issues"],
+      "required": ["schema_version", "valid", "issues", "error"],
       "properties": {
-        "schema_version": { "const": "1.0" },
+        "schema_version": { "const": "1.1" },
         "valid": {
           "type": "boolean",
           "description": "True when no issue of severity 'error' remains after the safe corrections. A schema violation is always an error."
@@ -48,6 +48,36 @@
               "corrected": { "type": "boolean" }
             }
           }
+        },
+        "error": {
+          "description": "Null when valid. Otherwise a ready error envelope for the workflow to return instead of the answer: the earlier steps produced output that cannot be used (since 1.1).",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["error", "error_code", "message", "details", "email_id"],
+              "properties": {
+                "error": { "const": true },
+                "error_code": { "const": "PROCESSING_ERROR" },
+                "message": { "type": "string" },
+                "details": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["field", "problem"],
+                    "properties": {
+                      "field": { "type": "string", "description": "The failing answer field, e.g. classification.categories[0].category" },
+                      "problem": { "type": "string" }
+                    }
+                  }
+                },
+                "email_id": { "type": ["string", "null"] }
+              }
+            }
+          ]
         }
       }
     }

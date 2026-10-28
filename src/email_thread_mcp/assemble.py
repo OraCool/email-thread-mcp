@@ -5,7 +5,8 @@ so identifiers, invoice numbers and the draft arrive exactly as those steps prod
 runs the validate_output checks on the result, then checks it against a JSON Schema.
 
 Output shape: the envelope, corrected as validate_output corrects it, plus a `validation` object
-(contracts/assemble.schema.json, schema_version 1.0).
+(contracts/assemble.schema.json, schema_version 1.1). When an error remains, `validation.error` is a ready
+PROCESSING_ERROR envelope for the workflow to return instead of the answer.
 """
 
 from __future__ import annotations
@@ -28,9 +29,10 @@ from .validate import (
     _check_language,
 )
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 _MAX_SCHEMA_ERRORS = 50
+_MAX_ERROR_DETAILS = 20
 
 
 def _json_path(parts: Any) -> str:
@@ -81,9 +83,23 @@ def assemble_output(
     # After the corrections, so a category whose case was fixed does not fail the schema's enum.
     if schema:
         issues += schema_issues(out, schema)
+    errors = [i for i in issues if i["severity"] == "error" and not i["corrected"]]
     out["validation"] = {
         "schema_version": SCHEMA_VERSION,
-        "valid": not any(i["severity"] == "error" and not i["corrected"] for i in issues),
+        "valid": not errors,
         "issues": issues,
+        "error": _processing_error(errors, out.get("email_id")) if errors else None,
     }
     return out
+
+
+def _processing_error(errors: list[dict[str, Any]], email_id: Any) -> dict[str, Any]:
+    """The error envelope for an answer that failed its checks, for a workflow to return instead of it:
+    the earlier steps produced output that cannot be used, so the caller may retry the request."""
+    details = [{"field": e["path"].removeprefix("$.").removeprefix("$"), "problem": e["message"]}
+               for e in errors[:_MAX_ERROR_DETAILS]]
+    shown = "; ".join(f"{d['field']}: {d['problem']}" for d in details[:3])
+    more = f" (and {len(errors) - 3} more)" if len(errors) > 3 else ""
+    return {"error": True, "error_code": "PROCESSING_ERROR",
+            "message": f"The answer failed {len(errors)} check{'s' if len(errors) != 1 else ''}: {shown}{more}.",
+            "details": details, "email_id": email_id if isinstance(email_id, str) and email_id.strip() else None}

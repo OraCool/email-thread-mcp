@@ -49,7 +49,7 @@ def _checks(out: dict) -> list[tuple[str, str]]:
 def test_valid_envelope_passes_unchanged() -> None:
     env = _envelope()
     out = assemble_output(env, SCHEMA, CATEGORIES)
-    assert out["validation"] == {"schema_version": "1.0", "valid": True, "issues": []}
+    assert out["validation"] == {"schema_version": "1.1", "valid": True, "issues": [], "error": None}
     assert {k: v for k, v in out.items() if k != "validation"} == env
 
 
@@ -147,3 +147,29 @@ def test_tool_accepts_actions_as_text() -> None:
     env = _envelope(suggested_actions=_actions("log payment plan"))
     out = assemble_tool(json.dumps(env), allowed_actions=json.dumps(ACTIONS))
     assert out["suggested_actions"][0]["action"] == "Log Payment Plan"
+
+
+def test_a_failed_answer_carries_a_processing_error_envelope() -> None:
+    env = _envelope(priority="URGENT", classification={"categories": [{"category": "Unknown", "confidence": 0.9}]})
+    error = assemble_output(env, SCHEMA, CATEGORIES)["validation"]["error"]
+    assert error["error"] is True and error["error_code"] == "PROCESSING_ERROR"
+    assert error["email_id"] == "MSG-1"
+    fields = {d["field"] for d in error["details"]}
+    assert "priority" in fields and "classification.categories[0].category" in fields
+    assert error["message"].startswith("The answer failed ")
+
+
+def test_warnings_and_corrections_do_not_make_an_error_envelope() -> None:
+    env = _envelope(classification={"categories": [{"category": "send statement", "confidence": 0.9}]})
+    validation = assemble_output(env, SCHEMA, CATEGORIES)["validation"]
+    assert validation["valid"] is True and validation["error"] is None
+
+
+def test_the_result_matches_its_contract() -> None:
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator
+
+    contract = json.loads((Path(__file__).parents[1] / "contracts" / "assemble.schema.json").read_text())
+    for env in (_envelope(), _envelope(priority="URGENT")):
+        Draft202012Validator(contract).validate(assemble_output(env, SCHEMA, CATEGORIES))
