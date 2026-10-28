@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from importlib.metadata import version
 from typing import Any
 
@@ -43,6 +44,20 @@ def _coerce(value: Any, name: str = "argument") -> Any:
         raise ToolError(f"{name} is nested too deeply") from None
 
 
+# A value that is nothing but one template placeholder: a workflow passed `{{email.body}}` through
+# unrendered because the variable is not set (typically the request did not parse as JSON).
+_PLACEHOLDER = re.compile(r"\{\{[^{}]*\}\}")
+_LANGUAGE_CODE = re.compile(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?")
+
+
+def _require_rendered(value: Any, name: str) -> None:
+    if isinstance(value, str) and _PLACEHOLDER.fullmatch(value.strip()):
+        raise ToolError(
+            f"{name} is an unrendered template ({value.strip()[:80]}): the variable it uses is not set; "
+            "check that the request is valid JSON with the expected fields"
+        )
+
+
 @mcp.tool()
 def parse_email_thread(body: str, ar_mailboxes: list[str] | str | None = None) -> dict[str, Any]:
     """Split an inbound email body (HTML or plain text, newest message on top) into the latest
@@ -51,10 +66,14 @@ def parse_email_thread(body: str, ar_mailboxes: list[str] | str | None = None) -
     signature block of our quoted message to sign the reply with.
 
     Args:
-        body: the raw email body (HTML or plain text), unchanged.
+        body: the raw email body (HTML or plain text), unchanged. An empty body, or one that is still an
+            unrendered template placeholder, is refused with an error.
         ar_mailboxes: addresses (or '@domain' entries) of the AR team; quoted messages from these are
             role 'recipient' (us), messages sent to them are role 'sender' (the customer).
     """
+    _require_rendered(body, "body")
+    if not isinstance(body, str) or not body.strip():
+        raise ToolError("body is empty: the request carries no email body to parse")
     mailboxes = _coerce(ar_mailboxes, "ar_mailboxes") if isinstance(ar_mailboxes, str) else ar_mailboxes
     if isinstance(mailboxes, str):
         mailboxes = [mailboxes]
@@ -144,9 +163,14 @@ def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
 
     Args:
         texts: the free texts to check (a list of strings, or one string).
-        expected: the requested language, an ISO 639-1 code such as "en" (case-insensitive).
+        expected: the requested language, an ISO 639-1 code such as "en" (case-insensitive). Anything
+            else, such as an unrendered template placeholder, is refused with an error.
     """
-    return _check_language(_coerce(texts, "texts") or [], expected or "")
+    _require_rendered(texts, "texts")
+    _require_rendered(expected, "expected")
+    if not isinstance(expected, str) or not _LANGUAGE_CODE.fullmatch(expected.strip()):
+        raise ToolError(f"expected must be a language code such as 'en', got {str(expected)[:40]!r}")
+    return _check_language(_coerce(texts, "texts") or [], expected)
 
 
 def main() -> None:
