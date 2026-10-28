@@ -1,15 +1,16 @@
 # email-thread-mcp
 
-MCP server (stdio) with three deterministic tools for an accounts-receivable (AR) email agent:
+MCP server (stdio) with six deterministic tools for an accounts-receivable (AR) email agent:
 no LLM inside, no network access, no credentials.
 
 | Tool | Role in the agent | Output contract |
 |---|---|---|
 | `validate_request(request, schema?, id_pointer?)` | very first step: checks the incoming request before any model runs. Parses it as JSON (a text that is not JSON, such as one indented with non-breaking spaces from a rich-text copy, is reported with the reason) and checks it against the caller's JSON Schema. When it fails, `error` is a ready envelope `{error: true, error_code: "INVALID_REQUEST", message, details: [{field, problem}], email_id}` that names the request's own fields, for the workflow to return as its answer. Reports a bad request, never raises (since 0.8.0) | [`contracts/request.schema.json`](contracts/request.schema.json) |
 | `parse_email_thread(body, ar_mailboxes?)` | first step: request preprocessing. Splits the raw email body (Outlook/Gmail/Apple HTML or plain text) into the latest message, its signer and greeting, and the quoted history (oldest first). A table row of short cells becomes one line, cells joined by ` \| `, so an invoice stays next to its date and amount | [`contracts/thread.schema.json`](contracts/thread.schema.json) |
-| `validate_output(output, categories, thread?, expected_language?)` | last step: deterministic checks of the final envelope. Categories are matched by name, or by integer id when the request's categories carry an `id` and no `name` (since 0.6.0). Corrects only unambiguous problems (category case/punctuation, an id written as a digit string, duplicates, invoice-number noise, human-review flag, markup or a repeated reply prefix in the draft subject); reports the rest, an empty draft as an error (except when the only suggested action is `No AR Action`: an email that needs nothing gets no draft), and with `expected_language` a `language` or `draft_response.language` that does not name it | [`contracts/validation.schema.json`](contracts/validation.schema.json) |
-| `assemble_output(envelope, schema?, allowed_categories?, thread?, allowed_actions?, expected_language?)` | last step of a workflow whose engine assembles the envelope from earlier steps' values with a template, so no model copies them: the `validate_output` checks, then a JSON Schema check. Returns the envelope plus `validation`; when an error remains, `validation.error` is a ready `PROCESSING_ERROR` envelope (same shape as `validate_request`'s) for the workflow to return instead of the answer (since 0.8.0) | [`contracts/assemble.schema.json`](contracts/assemble.schema.json) |
-| `check_language(texts, expected)` | after a step that writes free text in a requested language: gives each text a verdict, `ok`, `drift` (confidently another language) or `undecided` (mixed text, a close variant, or a language the detector does not know), so a workflow can retry the step on drift and ask an LLM about the undecided ones. 142 languages via py3langid, deterministic, no model calls. Texts under four words are not checked | [`contracts/language.schema.json`](contracts/language.schema.json) |
+| `validate_output(output, categories, thread?, expected_language?, expected_draft_language?)` | last step: deterministic checks of the final envelope. Categories are matched by name, or by integer id when the request's categories carry an `id` and no `name` (since 0.6.0). Corrects only unambiguous problems (category case/punctuation, an id written as a digit string, duplicates, invoice-number noise, human-review flag, markup or a repeated reply prefix in the draft subject); reports the rest, an empty draft as an error (except when the only suggested action is `No AR Action`: an email that needs nothing gets no draft), and with `expected_language` a `language` that does not name it, and a `draft_response.language` that does not name `expected_draft_language` (since 0.9.0; defaults to `expected_language`) | [`contracts/validation.schema.json`](contracts/validation.schema.json) |
+| `assemble_output(envelope, schema?, allowed_categories?, thread?, allowed_actions?, expected_language?, expected_draft_language?)` | last step of a workflow whose engine assembles the envelope from earlier steps' values with a template, so no model copies them: the `validate_output` checks, then a JSON Schema check. Returns the envelope plus `validation`; when an error remains, `validation.error` is a ready `PROCESSING_ERROR` envelope (same shape as `validate_request`'s) for the workflow to return instead of the answer (since 0.8.0) | [`contracts/assemble.schema.json`](contracts/assemble.schema.json) |
+| `check_language(texts, expected)` | after a step that writes free text in a requested language: gives each text a verdict, `ok`, `drift` (confidently another language) or `undecided` (mixed text, a close variant, or a language the detector does not know), so a workflow can retry the step on drift and ask an LLM about the undecided ones. 142 languages via py3langid, deterministic, no model calls. A word in a script the requested language does not use (an Arabic word in an English text) is a drift even when the rest is right; Latin is allowed everywhere (since 0.9.0). Texts under four words are not checked | [`contracts/language.schema.json`](contracts/language.schema.json) |
+| `detect_language(text)` | after `parse_email_thread`, on `latest_message.text`: names the incoming email's language (ISO 639-1), so the draft can be written in it. `undecided` (language `null`) for a reply under four words ("Thanks, noted"), a detector under 90% sure, or a language without an ISO 639-1 code: the caller then keeps `language_preference` (since 0.9.0) | [`contracts/detect_language.schema.json`](contracts/detect_language.schema.json) |
 
 ## Use
 
@@ -20,7 +21,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.5.3"]
+      "args": ["email-thread-mcp@0.9.0"]
     }
   }
 }
@@ -97,10 +98,11 @@ can edit, including a fake message "from" the AR team (role `recipient`). Prompt
 ## Release
 
 1. Bump `version` in `pyproject.toml`, then `uv run pytest`.
-2. Commit, tag `v<version>`, push both. Never move or reuse a tag or a version.
-3. `uv build`, check that the sdist holds only `src/`, `README.md` and `pyproject.toml`, then
-   `uv publish`.
-4. Check: `uvx email-thread-mcp@<version>` starts and waits on stdin.
+2. Add the version to `CHANGELOG.md`.
+3. Commit, tag `v<version>`, push both. Never move or reuse a tag or a version.
+4. Publish a GitHub release for the tag: `.github/workflows/publish.yml` runs the tests and publishes
+   to PyPI (Trusted Publishing; the tag must match the version).
+5. Check: `uvx email-thread-mcp@<version>` starts and waits on stdin.
 
 ## Develop
 

@@ -15,7 +15,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "language_status": {
       "enum": [
@@ -48,7 +48,8 @@
           "expected",
           "detected",
           "confidence",
-          "text"
+          "text",
+          "foreign_script"
         ],
         "properties": {
           "index": {
@@ -60,23 +61,33 @@
             "type": "string"
           },
           "detected": {
-            "type": "string",
-            "description": "The detector's top guess (py3langid code)."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The detector's top guess (py3langid code). For a drift found by script alone, the language that script names on its own (Hangul: ko), else null (Arabic, Devanagari, Cyrillic: several languages)."
           },
           "confidence": {
             "type": "number",
             "minimum": 0,
             "maximum": 1,
-            "description": "Probability that the text is NOT in the expected language or a close variant of it."
+            "description": "Probability that the text is NOT in the expected language or a close variant of it; 1.0 for a drift found by script."
           },
           "text": {
             "type": "string",
             "maxLength": 300,
             "description": "The start of the text."
+          },
+          "foreign_script": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first script in the text that the expected language does not use, title case ('Arabic', 'Devanagari', 'Cjk'), or null. Latin is never foreign (since 1.1)."
           }
         }
       },
-      "description": "Texts confidently in another language."
+      "description": "Texts confidently in another language, or with a word in a script the expected language does not use (since 1.1)."
     },
     "language_undecided": {
       "type": "array",
@@ -88,7 +99,8 @@
           "expected",
           "detected",
           "confidence",
-          "text"
+          "text",
+          "foreign_script"
         ],
         "properties": {
           "index": {
@@ -100,8 +112,11 @@
             "type": "string"
           },
           "detected": {
-            "type": "string",
-            "description": "The detector's top guess (py3langid code)."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The detector's top guess (py3langid code). For a drift found by script alone, the language that script names on its own (Hangul: ko), else null (Arabic, Devanagari, Cyrillic: several languages)."
           },
           "confidence": {
             "type": "number",
@@ -113,6 +128,13 @@
             "type": "string",
             "maxLength": 300,
             "description": "The start of the text."
+          },
+          "foreign_script": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The first script in the text that the expected language does not use, title case ('Arabic', 'Devanagari', 'Cjk'), or null. Latin is never foreign (since 1.1)."
           }
         }
       },

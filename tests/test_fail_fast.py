@@ -32,4 +32,4 @@ def test_check_language_refuses_unrendered_texts() -> None:
 
 @pytest.mark.parametrize("expected", ["en", "EN", "pt-BR", "zh_TW", "nb"])
 def test_check_language_accepts_language_codes(expected) -> None:
-    assert check_language(["Send the signed proof of delivery to the customer today."], expected)["schema_version"] == "1.0"
+    assert check_language(["Send the signed proof of delivery to the customer today."], expected)["schema_version"] == "1.1"

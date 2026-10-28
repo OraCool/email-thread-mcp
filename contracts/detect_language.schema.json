@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OraCool/email-thread-mcp/contracts/detect_language.schema.json",
+  "title": "detect_language result",
+  "description": "Output of the detect_language MCP tool: the language of one text, typically parse_email_thread's latest_message.text, so the draft can be written in the customer's language. Undecided means the caller keeps its default language.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "language",
+    "status",
+    "ranking"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "language": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-z]{2}$",
+      "description": "ISO 639-1 code, lowercase. Null when status is undecided."
+    },
+    "status": {
+      "enum": [
+        "detected",
+        "undecided"
+      ],
+      "description": "undecided: fewer than four words after removing placeholders, URLs, addresses and tokens with digits (8 characters in Chinese, Japanese, Thai, Lao, Khmer, Myanmar); the top language under 0.9 probability; or a language without an ISO 639-1 code."
+    },
+    "ranking": {
+      "type": "array",
+      "maxItems": 3,
+      "description": "The detector's top languages, most likely first; dialect labels summed into their language (ary, arz -> ar). Empty when the text is too short.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "language",
+          "probability"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "ISO 639-1 where one exists, else the py3langid code."
+          },
+          "probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -17,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .assemble import assemble_output as _assemble_output
 from .language import check_language as _check_language
+from .language import detect_language as _detect_language
 from .request import validate_request as _validate_request
 from .thread import parse_email_thread as _parse_email_thread
 from .validate import validate_output as _validate_output
@@ -119,6 +120,7 @@ def validate_output(
     categories: list[Any] | str,
     thread: dict[str, Any] | str | None = None,
     expected_language: str | None = None,
+    expected_draft_language: str | None = None,
 ) -> dict[str, Any]:
     """Check the agent's output envelope: categories must come from the request's list,
     invoice numbers clean, the draft greets the right person and marks promised attachments.
@@ -130,12 +132,14 @@ def validate_output(
             objects with an integer `id` and no `name`, matched by id.
         thread: the parse_email_thread result, used for the greeting check. Optional.
         expected_language: the requested response language (ISO 639-1). Optional; when given,
-            `language` and `draft_response.language` must name it.
+            `language` must name it, and `draft_response.language` too unless expected_draft_language is given.
+        expected_draft_language: the draft's language, usually detect_language's result for the
+            incoming email (ISO 639-1). Optional; defaults to expected_language.
     """
     try:
         return _validate_output(
             _coerce(output, "output"), _coerce(categories, "categories") or [], _coerce(thread, "thread"),
-            expected_language or None,
+            expected_language or None, expected_draft_language or None,
         )
     except ValueError as e:
         raise ToolError(str(e)) from None
@@ -149,6 +153,7 @@ def assemble_output(
     thread: dict[str, Any] | str | None = None,
     allowed_actions: list[Any] | str | None = None,
     expected_language: str | None = None,
+    expected_draft_language: str | None = None,
 ) -> dict[str, Any]:
     """Final step: check an envelope that the workflow assembled from the earlier steps' values,
     without an LLM copying them. Runs the validate_output checks, then validates against `schema`.
@@ -165,7 +170,10 @@ def assemble_output(
         allowed_actions: the suggested-action vocabulary (objects with `name`, or plain names). Optional.
             A case or punctuation variant is corrected; an action outside it stays, with a warning.
         expected_language: the requested response language (ISO 639-1). Optional; when given,
-            `language` and `draft_response.language` must name it. A mismatch is an error, not corrected.
+            `language` must name it, and `draft_response.language` too unless expected_draft_language is
+            given. A mismatch is an error, not corrected.
+        expected_draft_language: the draft's language, usually detect_language's result for the
+            incoming email (ISO 639-1). Optional; defaults to expected_language.
     """
     args = {}
     for name, value in (("envelope", envelope), ("schema", schema),
@@ -178,6 +186,7 @@ def assemble_output(
                 raise ToolError(f"{name} is an unrendered template: a variable it uses is not set") from None
             raise
     args["expected_language"] = expected_language or None
+    args["expected_draft_language"] = expected_draft_language or None
     try:
         return _assemble_output(**args)
     except ValueError as e:
@@ -191,8 +200,12 @@ def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
     (too ambiguous for the detector: a mixed or close-variant text, or a language it does not know;
     decide these another way, e.g. with an LLM). Returns {schema_version, language_status:
     ok|drift|undecided, language_ok, language_expected, language_checked, language_issues: [...],
-    language_undecided: [...]}; each entry is {index, expected, detected, confidence, text}. Texts
-    under four words (names, identifiers, action names) are not checked. 142 languages (py3langid).
+    language_undecided: [...]}; each entry is {index, expected, detected, confidence, text,
+    foreign_script}. A word in a script the expected language does not use (an Arabic word in an
+    English text) is a drift even when the rest is right: foreign_script names it ("Arabic") and
+    detected is the language that script names on its own (Hangul: ko), or null when several languages
+    write it. Latin is allowed in every language. Texts under four words (names, identifiers, action
+    names) are not checked at all. 142 languages (py3langid).
 
     Args:
         texts: the free texts to check (a list of strings, or one string).
@@ -204,6 +217,22 @@ def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
     if not isinstance(expected, str) or not _LANGUAGE_CODE.fullmatch(expected.strip()):
         raise ToolError(f"expected must be a language code such as 'en', got {str(expected)[:40]!r}")
     return _check_language(_coerce(texts, "texts") or [], expected)
+
+
+@mcp.tool()
+def detect_language(text: str) -> dict[str, Any]:
+    """Name the language of one text, typically parse_email_thread's latest_message.text, so the draft
+    can be written in the language the customer wrote in. Returns {schema_version, language: ISO 639-1
+    code or null, status: detected|undecided, ranking: [{language, probability}], at most 3}. Undecided
+    (language null) for a text under four words ("Thanks, noted"), one the detector is under 90% sure
+    of, or a language without an ISO 639-1 code; the caller then keeps its default language.
+
+    Args:
+        text: the text to identify. An empty text is undecided; an unrendered template placeholder is
+            refused with an error.
+    """
+    _require_rendered(text, "text")
+    return _detect_language(text if isinstance(text, str) else "")
 
 
 def main() -> None:

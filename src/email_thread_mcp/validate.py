@@ -129,15 +129,21 @@ def _check_categories(out: dict[str, Any], allowed: list[str] | list[int], issue
     out["classification"]["categories"] = kept
 
 
-def _check_language(out: dict[str, Any], expected: str, issues: list[dict[str, Any]]) -> None:
-    """Both language fields must name the requested response language. A mismatch is reported, never
-    relabelled: a draft written in another language would only be hidden by a corrected label."""
-    want = expected.strip().casefold()
+def _check_language(
+    out: dict[str, Any], expected: str | None, expected_draft: str | None, issues: list[dict[str, Any]]
+) -> None:
+    """`language` must name the requested response language, `draft_response.language` the draft's
+    (the incoming email's language since 0.9.0; the response language when not given). A mismatch is
+    reported, never relabelled: a draft written in another language would only be hidden by a corrected label."""
+    expected_draft = expected_draft or expected
     draft = out.get("draft_response")
-    fields = [("$.language", out.get("language"))]
+    fields = [("$.language", out.get("language"), expected)]
     if isinstance(draft, dict):
-        fields.append(("$.draft_response.language", draft.get("language")))
-    for path, value in fields:
+        fields.append(("$.draft_response.language", draft.get("language"), expected_draft))
+    for path, value, wanted in fields:
+        if not wanted:
+            continue
+        want = wanted.strip().casefold()
         if not isinstance(value, str) or value.strip().casefold() != want:
             issues.append(_issue("language_matches_preference", "error", path,
                                  f"language is {value!r}, the request asked for '{want}'", False))
@@ -309,12 +315,13 @@ def validate_output(
     categories: list[Any],
     thread: dict[str, Any] | None = None,
     expected_language: str | None = None,
+    expected_draft_language: str | None = None,
 ) -> dict[str, Any]:
     out = copy.deepcopy(output)
     issues: list[dict[str, Any]] = []
     _check_categories(out, _allowed_categories(categories), issues)
-    if expected_language:
-        _check_language(out, expected_language, issues)
+    if expected_language or expected_draft_language:
+        _check_language(out, expected_language, expected_draft_language, issues)
     _check_invoices(out, issues)
     _check_draft(out, thread, issues)
     return {

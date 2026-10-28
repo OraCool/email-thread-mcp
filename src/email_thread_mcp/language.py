@@ -17,16 +17,24 @@ placeholders, URLs, e-mail addresses and tokens with digits (invoice numbers, am
 with fewer than `_MIN_WORDS` words left (names, "No AR Action") are not checked; in scripts without
 spaces between words, `_MIN_UNSPACED_CHARS` characters count instead.
 
-Output shape: contracts/language.schema.json (schema_version 1.0).
+A text with a word in a script the requested language does not use (an Arabic word in an English
+text) is a drift too, however confident the detector is about the rest; Latin is allowed everywhere.
+
+`detect_language` names the language of one text, such as the incoming email, with the same
+thresholds; a reply too short or too unclear to judge is undecided and the caller keeps its default.
+
+Output shapes: contracts/language.schema.json (schema_version 1.1),
+contracts/detect_language.schema.json (schema_version 1.0).
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from functools import lru_cache
 from typing import Any
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 _MIN_WORDS = 4
 # Scripts written without spaces between words (Chinese, Japanese, Thai, Lao, Khmer, Myanmar): there,
@@ -50,6 +58,34 @@ _PLACEHOLDER = re.compile(r"\[[^\]\n]{0,200}\]")
 # Detection needs a sentence or two; a longer text is cut, which also bounds the work per text.
 _MAX_CHARS = 2000
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
+# Detector labels that are a dialect or an older form of an ISO 639-1 language; detect_language sums
+# their probability into that language, so an Arabic text split between ar, ary and arz still counts.
+_ISO_639_1 = {"ary": "ar", "arz": "ar", "uzs": "uz", "hbo": "he", "grc": "el"}
+_RANKING_SIZE = 3
+
+# Scripts by the first word of a letter's Unicode name. Latin is allowed in every language: product
+# names, identifiers and English terms are written in it everywhere.
+_KNOWN_SCRIPTS = {
+    "ARABIC", "ARMENIAN", "BENGALI", "CJK", "CYRILLIC", "DEVANAGARI", "ETHIOPIC", "GEORGIAN", "GREEK",
+    "GUJARATI", "GURMUKHI", "HANGUL", "HEBREW", "HIRAGANA", "KANNADA", "KATAKANA", "KHMER", "LAO",
+    "MALAYALAM", "MONGOLIAN", "MYANMAR", "ORIYA", "SINHALA", "TAMIL", "TELUGU", "THAI", "TIBETAN",
+}
+# The scripts of each detector language not written in Latin alone; any other language is Latin.
+_LANGUAGE_SCRIPTS = {
+    "am": {"ETHIOPIC"}, "ar": {"ARABIC"}, "ary": {"ARABIC"}, "arz": {"ARABIC"}, "fa": {"ARABIC"},
+    "ps": {"ARABIC"}, "ur": {"ARABIC"}, "ug": {"ARABIC"}, "sdh": {"ARABIC"}, "uzs": {"ARABIC"},
+    "ku": {"ARABIC"}, "as": {"BENGALI"}, "bn": {"BENGALI"}, "dz": {"TIBETAN"}, "el": {"GREEK"},
+    "grc": {"GREEK"}, "gu": {"GUJARATI"}, "he": {"HEBREW"}, "hbo": {"HEBREW"}, "hi": {"DEVANAGARI"},
+    "mr": {"DEVANAGARI"}, "ne": {"DEVANAGARI"}, "sa": {"DEVANAGARI"}, "gom": {"DEVANAGARI"},
+    "hy": {"ARMENIAN"}, "ja": {"CJK", "HIRAGANA", "KATAKANA"}, "ka": {"GEORGIAN"}, "km": {"KHMER"},
+    "kn": {"KANNADA"}, "ko": {"HANGUL", "CJK"}, "lo": {"LAO"}, "ml": {"MALAYALAM"}, "my": {"MYANMAR"},
+    "or": {"ORIYA"}, "pa": {"GURMUKHI"}, "si": {"SINHALA"}, "ta": {"TAMIL"}, "te": {"TELUGU"},
+    "th": {"THAI"}, "zh": {"CJK"}, "yue": {"CJK"}, "wuu": {"CJK"}, "mn": {"CYRILLIC", "MONGOLIAN"},
+    **{lang: {"CYRILLIC"} for lang in ("ba", "be", "bg", "kk", "ky", "mk", "ru", "sr", "tg", "tt", "uk", "bs")},
+}
+# Letters of a foreign script in one word that make a text drift: one stray letter (a Greek mu, a
+# math symbol) is not enough, a word is.
+_MIN_FOREIGN_LETTERS = 2
 
 
 @lru_cache(maxsize=1)
@@ -93,6 +129,53 @@ def detect(text: str) -> tuple[str | None, list[tuple[str, float]]]:
     return ranking[0][0], ranking
 
 
+def detect_language(text: str) -> dict[str, Any]:
+    """The language of one text (an incoming email), or undecided: too short, below the confidence
+    `check_language` uses, or a language without an ISO 639-1 code. Output shape:
+    contracts/detect_language.schema.json (schema_version 1.0)."""
+    _, ranking = detect(text if isinstance(text, str) else "")
+    totals: dict[str, float] = {}
+    for lang, p in ranking:
+        code = _ISO_639_1.get(lang, lang)
+        totals[code] = totals.get(code, 0.0) + p
+    top = sorted(totals.items(), key=lambda item: -item[1])[:_RANKING_SIZE]
+    found = top[0][0] if top and top[0][1] >= _MIN_CONFIDENCE and len(top[0][0]) == 2 else None
+    return {
+        "schema_version": "1.0",
+        "language": found,
+        "status": "detected" if found else "undecided",
+        "ranking": [{"language": lang, "probability": round(p, 3)} for lang, p in top],
+    }
+
+
+def _script(char: str) -> str | None:
+    words = unicodedata.name(char, "").replace("-", " ").split()
+    if words[:1] in (["FULLWIDTH"], ["HALFWIDTH"]):
+        words = words[1:]
+    return words[0] if words and words[0] in _KNOWN_SCRIPTS else None
+
+
+def _foreign_script(text: str, want: str) -> tuple[str, str] | None:
+    """The first word written in a script the requested language does not use, as (script, word)."""
+    allowed = _LANGUAGE_SCRIPTS.get(want, set())
+    for word in text.split():
+        counts: dict[str, int] = {}
+        for char in word:
+            script = _script(char) if char.isalpha() else None
+            if script and script not in allowed:
+                counts[script] = counts.get(script, 0) + 1
+                if counts[script] >= _MIN_FOREIGN_LETTERS:
+                    return script, word
+    return None
+
+
+def _script_language(script: str) -> str | None:
+    """The language a foreign script names on its own (Hangul: ko), or None when several languages
+    write it (Arabic, Devanagari, Cyrillic): one word is too little to tell them apart."""
+    candidates = {_ISO_639_1.get(lang, lang) for lang, scripts in _LANGUAGE_SCRIPTS.items() if script in scripts}
+    return candidates.pop() if len(candidates) == 1 else None
+
+
 def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
     """Give every text a verdict against `expected` (ISO 639-1); see the module docstring."""
     want = _normalize(expected)
@@ -107,17 +190,22 @@ def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
         found, ranking = detect(text)
         if found is None:
             continue
+        foreign = _foreign_script(_strip_noise(text), want) if known else None
         checked += 1
         group = _group(want)
         # Probability mass of the requested language and the ones it is confused with, summed over
         # the ranking, so a split between close variants (zh/wuu/yue, no/da) still counts in full.
         wanted = sum(p for lang, p in ranking if lang in group)
         not_wanted = 1.0 - wanted
-        if known and found == want and wanted >= _MIN_CONFIDENCE:
-            continue
-        entry = {"index": i, "expected": want, "detected": found, "confidence": round(not_wanted, 3), "text": text[:300]}
+        entry = {"index": i, "expected": want, "detected": found, "confidence": round(not_wanted, 3),
+                 "text": text[:300], "foreign_script": foreign[0].title() if foreign else None}
         if known and found not in group and not_wanted >= _MIN_CONFIDENCE:
             issues.append(entry)
+        elif foreign:
+            # A word in another script is drift even when the rest of the text is in the right language.
+            issues.append({**entry, "detected": _script_language(foreign[0]), "confidence": 1.0})
+        elif known and found == want and wanted >= _MIN_CONFIDENCE:
+            continue
         else:
             undecided.append(entry)
     status = "drift" if issues else "undecided" if undecided else "ok"

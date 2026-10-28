@@ -67,6 +67,7 @@ def assemble_output(
     thread: dict[str, Any] | None = None,
     allowed_actions: list[Any] | None = None,
     expected_language: str | None = None,
+    expected_draft_language: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(envelope, dict):
         raise ValueError("envelope must be a JSON object")
@@ -76,8 +77,8 @@ def assemble_output(
         _check_categories(out, _allowed_categories(allowed_categories), issues)
     if allowed_actions:
         _check_actions(out, _category_names(allowed_actions), issues)
-    if expected_language:
-        _check_language(out, expected_language, issues)
+    if expected_language or expected_draft_language:
+        _check_language(out, expected_language, expected_draft_language, issues)
     _check_invoices(out, issues)
     _check_draft(out, thread, issues)
     # After the corrections, so a category whose case was fixed does not fail the schema's enum.
