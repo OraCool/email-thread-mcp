@@ -15,6 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from .assemble import assemble_output as _assemble_output
+from .language import check_language as _check_language
 from .thread import parse_email_thread as _parse_email_thread
 from .validate import validate_output as _validate_output
 
@@ -129,6 +130,20 @@ def assemble_output(
         return _assemble_output(**args)
     except ValueError as e:
         raise ToolError(str(e)) from None
+
+
+@mcp.tool()
+def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
+    """Report every text clearly written in another language than `expected` (ISO 639-1), so a
+    pipeline can retry the step that wrote it. Returns {schema_version, language_ok, expected,
+    checked, language_issues: [{index, expected, detected, text}]}. Short texts, names, identifiers
+    and an unsupported `expected` are never reported.
+
+    Args:
+        texts: the free texts to check (a list of strings, or one string).
+        expected: the requested language, an ISO 639-1 code such as "en" (case-insensitive).
+    """
+    return _check_language(_coerce(texts, "texts") or [], expected or "")
 
 
 def main() -> None:

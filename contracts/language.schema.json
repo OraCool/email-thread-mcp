@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OraCool/email-thread-mcp/contracts/language.schema.json",
+  "title": "check_language result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "language_ok", "expected", "checked", "language_issues"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "language_ok": { "type": "boolean", "description": "False when at least one text is clearly in another language than expected." },
+    "expected": { "type": "string", "description": "The requested ISO 639-1 code, lowercased." },
+    "checked": { "type": "integer", "minimum": 0, "description": "Texts long enough to decide (5+ words, one language with 3+ stop-word hits)." },
+    "language_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "expected", "detected", "text"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "description": "Position of the text in the input list." },
+          "expected": { "type": "string" },
+          "detected": { "type": "string", "enum": ["en", "de", "fr", "it", "es", "nl", "pt", "pl"] },
+          "text": { "type": "string", "maxLength": 200, "description": "The start of the offending text." }
+        }
+      }
+    }
+  }
+}
