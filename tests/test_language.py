@@ -102,3 +102,11 @@ def test_non_strings_are_skipped() -> None:
 def test_tool_accepts_texts_as_json_text() -> None:
     out = check_language_tool(json.dumps([ENGLISH[0], DRIFTED["fr"]]), "en")
     assert [i["detected"] for i in out["language_issues"]] == ["fr"]
+
+
+def test_long_text_without_spaces_is_fast() -> None:
+    import time
+
+    start = time.perf_counter()
+    check_language(["a" * 200_000, "[" * 100_000, ("x" * 50_000) + "@"], "en")
+    assert time.perf_counter() - start < 1.0

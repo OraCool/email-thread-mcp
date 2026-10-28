@@ -46,7 +46,9 @@ _CONFUSABLE = [
 ]
 # ISO 639-1 codes a caller may send that the model labels differently.
 _ALIASES = {"nb": "no", "iw": "he", "in": "id", "zh-cn": "zh", "zh-tw": "zh"}
-_NOISE = re.compile(r"\[[^\]]*\]|https?://\S+|\S+@\S+|\S*\d\S*")
+_PLACEHOLDER = re.compile(r"\[[^\]\n]{0,200}\]")
+# Detection needs a sentence or two; a longer text is cut, which also bounds the work per text.
+_MAX_CHARS = 2000
 _WORD = re.compile(r"[^\W\d_]+", re.UNICODE)
 
 
@@ -70,6 +72,13 @@ def _confusable(a: str, b: str) -> bool:
     return any(a in group and b in group for group in _CONFUSABLE)
 
 
+def _strip_noise(text: str) -> str:
+    """Drop what is never a language signal: bracketed placeholders, URLs, addresses, and tokens with
+    digits (invoice numbers, amounts, dates). Token by token, so the work stays linear."""
+    text = _PLACEHOLDER.sub(" ", text[:_MAX_CHARS])
+    return " ".join(t for t in text.split() if "@" not in t and "://" not in t and not any(c.isdigit() for c in t))
+
+
 def _group(lang: str) -> set[str]:
     return set().union({lang}, *(g for g in _CONFUSABLE if lang in g))
 
@@ -77,7 +86,7 @@ def _group(lang: str) -> set[str]:
 def detect(text: str) -> tuple[str | None, list[tuple[str, float]]]:
     """The detected language and the full ranking [(language, probability)], or (None, []) when the
     text is too short to judge."""
-    cleaned = _NOISE.sub(" ", text or "")
+    cleaned = _strip_noise(text or "")
     if len(_WORD.findall(cleaned)) < _MIN_WORDS and len(_UNSPACED.findall(cleaned)) < _MIN_UNSPACED_CHARS:
         return None, []
     ranking = [(lang, float(p)) for lang, p in _identifier().rank(cleaned)]
