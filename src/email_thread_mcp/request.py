@@ -17,6 +17,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
+from referencing import Registry
+from referencing.exceptions import Unresolvable
 
 SCHEMA_VERSION = "1.0"
 ERROR_CODE = "INVALID_REQUEST"
@@ -142,8 +144,12 @@ def validate_request(request: Any, schema: dict[str, Any] | None = None, id_poin
         return _result(None, email_id)
 
     details: list[dict[str, str]] = []
-    errors = sorted(Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(doc),
-                    key=lambda e: list(map(str, e.absolute_path)))
+    # An empty registry: only refs inside the schema resolve, never a URL or a file (the schema is an argument).
+    validator = Draft202012Validator(schema, registry=Registry(), format_checker=FormatChecker())
+    try:
+        errors = sorted(validator.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
+    except Unresolvable as e:
+        raise ValueError(f"schema has a $ref that does not resolve inside it: {e}") from None
     for error in errors:
         for field, text in _problems(error):
             if {"field": field, "problem": text} not in details:

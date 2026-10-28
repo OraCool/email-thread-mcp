@@ -15,6 +15,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import SchemaError
+from referencing import Registry
+from referencing.exceptions import Unresolvable
 
 from .validate import (
     _allowed_categories,
@@ -44,8 +46,12 @@ def schema_issues(envelope: Any, schema: dict[str, Any]) -> list[dict[str, Any]]
         Draft202012Validator.check_schema(schema)
     except SchemaError as e:
         raise ValueError(f"schema is not a valid JSON Schema: {e.message}") from None
-    validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    errors = sorted(validator.iter_errors(envelope), key=lambda e: (list(map(str, e.absolute_path)), e.message))
+    # An empty registry: only refs inside the schema resolve, never a URL or a file (the schema is an argument).
+    validator = Draft202012Validator(schema, registry=Registry(), format_checker=FormatChecker())
+    try:
+        errors = sorted(validator.iter_errors(envelope), key=lambda e: (list(map(str, e.absolute_path)), e.message))
+    except Unresolvable as e:
+        raise ValueError(f"schema has a $ref that does not resolve inside it: {e}") from None
     return [
         {"check": "schema", "severity": "error", "path": _json_path(e.absolute_path), "message": e.message, "corrected": False}
         for e in errors[:_MAX_SCHEMA_ERRORS]

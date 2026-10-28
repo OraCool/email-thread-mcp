@@ -248,6 +248,7 @@ dependencies = [
     { name = "jsonschema" },
     { name = "mcp" },
     { name = "py3langid" },
+    { name = "referencing" },
 ]
 
 [package.dev-dependencies]
@@ -261,6 +262,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "py3langid", specifier = ">=0.4,<0.5" },
+    { name = "referencing", specifier = ">=0.35,<1" },
 ]
 
 [package.metadata.requires-dev]

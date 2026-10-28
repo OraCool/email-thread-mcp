@@ -143,3 +143,16 @@ def test_the_result_matches_its_contract() -> None:
     contract = json.loads((Path(__file__).parents[1] / "contracts" / "request.schema.json").read_text())
     for req in (_request(), _request(language_preference=None), "{bad"):
         Draft202012Validator(contract).validate(validate_request(req, SCHEMA))
+
+
+@pytest.mark.parametrize("ref", ["http://127.0.0.1:9/schema.json", "file:///etc/passwd"])
+def test_a_schema_ref_is_never_fetched(ref) -> None:
+    with pytest.raises(ToolError, match="does not resolve inside it"):
+        validate_request(_request(), {"$ref": ref})
+
+
+def test_a_local_ref_still_resolves() -> None:
+    schema = {"$defs": {"email": SCHEMA["properties"]["email"]}, "type": "object",
+              "required": ["email"], "properties": {"email": {"$ref": "#/$defs/email"}}}
+    assert validate_request(_request(), schema)["valid"] is True
+    assert validate_request(_request(language_preference=None), schema)["valid"] is False
