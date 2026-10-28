@@ -4,25 +4,119 @@
   "title": "check_language result",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "language_ok", "expected", "checked", "language_issues"],
+  "required": [
+    "schema_version",
+    "language_status",
+    "language_ok",
+    "language_expected",
+    "language_checked",
+    "language_issues",
+    "language_undecided"
+  ],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "language_ok": { "type": "boolean", "description": "False when at least one text is clearly in another language than expected." },
-    "expected": { "type": "string", "description": "The requested ISO 639-1 code, lowercased." },
-    "checked": { "type": "integer", "minimum": 0, "description": "Texts long enough to decide (5+ words, one language with 3+ stop-word hits)." },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "language_status": {
+      "enum": [
+        "ok",
+        "drift",
+        "undecided"
+      ],
+      "description": "drift when any text drifted; else undecided when any text is undecided; else ok."
+    },
+    "language_ok": {
+      "type": "boolean",
+      "description": "language_status == ok."
+    },
+    "language_expected": {
+      "type": "string",
+      "description": "The requested code, normalised (lowercase; nb -> no)."
+    },
+    "language_checked": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Texts long enough to judge."
+    },
     "language_issues": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["index", "expected", "detected", "text"],
+        "required": [
+          "index",
+          "expected",
+          "detected",
+          "confidence",
+          "text"
+        ],
         "properties": {
-          "index": { "type": "integer", "minimum": 0, "description": "Position of the text in the input list." },
-          "expected": { "type": "string" },
-          "detected": { "type": "string", "enum": ["en", "de", "fr", "it", "es", "nl", "pt", "pl"] },
-          "text": { "type": "string", "maxLength": 200, "description": "The start of the offending text." }
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Position of the text in the input list."
+          },
+          "expected": {
+            "type": "string"
+          },
+          "detected": {
+            "type": "string",
+            "description": "The detector's top guess (py3langid code)."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Probability that the text is NOT in the expected language or a close variant of it."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The start of the text."
+          }
         }
-      }
+      },
+      "description": "Texts confidently in another language."
+    },
+    "language_undecided": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "expected",
+          "detected",
+          "confidence",
+          "text"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Position of the text in the input list."
+          },
+          "expected": {
+            "type": "string"
+          },
+          "detected": {
+            "type": "string",
+            "description": "The detector's top guess (py3langid code)."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Probability that the text is NOT in the expected language or a close variant of it."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The start of the text."
+          }
+        }
+      },
+      "description": "Texts the detector cannot settle; decide them another way."
     }
   }
 }

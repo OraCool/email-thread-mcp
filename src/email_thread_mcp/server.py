@@ -134,10 +134,13 @@ def assemble_output(
 
 @mcp.tool()
 def check_language(texts: list[Any] | str, expected: str) -> dict[str, Any]:
-    """Report every text clearly written in another language than `expected` (ISO 639-1), so a
-    pipeline can retry the step that wrote it. Returns {schema_version, language_ok, expected,
-    checked, language_issues: [{index, expected, detected, text}]}. Short texts, names, identifiers
-    and an unsupported `expected` are never reported.
+    """Check that free texts are written in the requested language, so a pipeline can retry the step
+    that wrote them. Every text gets a verdict: ok, drift (confidently another language) or undecided
+    (too ambiguous for the detector: a mixed or close-variant text, or a language it does not know;
+    decide these another way, e.g. with an LLM). Returns {schema_version, language_status:
+    ok|drift|undecided, language_ok, language_expected, language_checked, language_issues: [...],
+    language_undecided: [...]}; each entry is {index, expected, detected, confidence, text}. Texts
+    under four words (names, identifiers, action names) are not checked. 142 languages (py3langid).
 
     Args:
         texts: the free texts to check (a list of strings, or one string).
