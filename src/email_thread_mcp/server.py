@@ -17,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from .assemble import assemble_output as _assemble_output
 from .language import check_language as _check_language
+from .request import validate_request as _validate_request
 from .thread import parse_email_thread as _parse_email_thread
 from .validate import validate_output as _validate_output
 
@@ -56,6 +57,38 @@ def _require_rendered(value: Any, name: str) -> None:
             f"{name} is an unrendered template ({value.strip()[:80]}): the variable it uses is not set; "
             "check that the request is valid JSON with the expected fields"
         )
+
+
+@mcp.tool()
+def validate_request(
+    request: dict[str, Any] | str,
+    schema: dict[str, Any] | str | None = None,
+    id_pointer: str = "/email/id",
+) -> dict[str, Any]:
+    """First step: check the incoming request before any model runs. Parses it as JSON and checks it
+    against `schema`. Returns {schema_version, valid, error, email_id}: when the request fails,
+    `error` is a ready error envelope {error: true, error_code: "INVALID_REQUEST", message, details:
+    [{field, problem}], email_id} that names the request's own fields (email.language_preference:
+    missing), so a workflow can return it as its answer. A bad request is reported, never raised.
+
+    Args:
+        request: the raw request text, or the parsed request. A text that is only an unrendered
+            template placeholder, is not JSON (e.g. non-breaking spaces from a rich-text copy) or is
+            empty is reported as invalid, with the reason.
+        schema: a JSON Schema (draft 2020-12) the request must satisfy. Optional; without it only the
+            JSON syntax is checked. An invalid schema is refused with an error (a configuration error).
+        id_pointer: JSON Pointer to the request's identifier, echoed as `email_id`. Default /email/id.
+    """
+    try:
+        schema_value = _coerce(schema, "schema")
+    except ToolError:
+        if isinstance(schema, str) and "{{" in schema:
+            raise ToolError("schema is an unrendered template: a variable it uses is not set") from None
+        raise
+    try:
+        return _validate_request(request, schema_value, id_pointer or "/email/id")
+    except ValueError as e:
+        raise ToolError(str(e)) from None
 
 
 @mcp.tool()

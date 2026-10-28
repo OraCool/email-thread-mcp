@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:email-thread-mcp:schema:request",
+  "title": "RequestValidationResult",
+  "description": "Output of the validate_request MCP tool: whether the incoming request parses as JSON and satisfies the caller's JSON Schema. When it does not, `error` is a ready error envelope that names the request's own fields, for a workflow to return as its answer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "valid", "error", "email_id"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "valid": { "type": "boolean" },
+    "email_id": {
+      "type": ["string", "null"],
+      "description": "The request's identifier at id_pointer; null when the request is unreadable or has none."
+    },
+    "error": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["error", "error_code", "message", "details", "email_id"],
+          "properties": {
+            "error": { "const": true },
+            "error_code": { "const": "INVALID_REQUEST" },
+            "message": { "type": "string", "description": "One sentence naming the first problems." },
+            "details": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["field", "problem"],
+                "properties": {
+                  "field": { "type": "string", "description": "The request field as the caller writes it, e.g. email.categories[0].description; 'request' for the whole request." },
+                  "problem": { "type": "string", "description": "missing, empty, not allowed, must be a <type>, must match <pattern>, not valid JSON: ..." }
+                }
+              }
+            },
+            "email_id": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    }
+  }
+}
