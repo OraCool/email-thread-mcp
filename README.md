@@ -21,7 +21,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.10.1"]
+      "args": ["email-thread-mcp@0.10.2"]
     }
   }
 }
@@ -91,15 +91,24 @@ Once a real thread in it (anonymised as below) parses correctly, add it as a fix
 
 The body is written by the customer, and anyone can send one. The parser:
 
-- drops text a reader cannot see (CSS `display:none`, `visibility:hidden`, `font-size:0`, `opacity:0`,
-  `mso-hide:all`, the `hidden` attribute) and zero-width, bidirectional and control characters, and
-  reports both in `parse_info.warnings`;
+- drops text a reader cannot see and reports it in `parse_info.warnings`: CSS hiding inline or by a
+  `<style>` rule on a tag, class or id (`display:none`, `visibility:hidden`, `mso-hide:all`, a font
+  under 2px, opacity under 0.1, zero height or width with `overflow:hidden`, off-screen offsets,
+  `clip`, `scale(0)`, `color:transparent`), the `hidden` attribute, `<template>` and `<noscript>`, and
+  zero-width, bidirectional, control and Unicode tag characters and variation selectors. A hiding
+  rule it cannot apply (an attribute or pseudo selector, a conditional `@media`) is reported for
+  review;
+- fails closed on a body that is hidden as a whole: the text is empty and a warning asks for human
+  review (since 0.10.2; before, the hidden text was passed on);
 - bounds its own cost: the body is cut at 2M raw / 300k text characters, and dates beyond 50 parser
   calls per email stay null.
 
 It does not make the content trustworthy. The quoted history in particular is plain text the customer
-can edit, including a fake message "from" the AR team (role `recipient`). Prompts must treat
-`latest_message` and `thread_context` as data, never as instructions.
+can edit, including a fake message "from" the AR team (role `recipient`). Roles are matched on that
+text and are unverified, and so is what is read from a message of ours: `our_signature` and the
+fallback `reply_to_name` (the name our message greeted). `our_signature` keeps no address, URL or
+number of 5+ digits, but a forged block can still choose its name and title lines, so a human reviews
+every draft. Prompts must treat `latest_message` and `thread_context` as data, never as instructions.
 
 ## Release
 

@@ -103,7 +103,9 @@ def parse_email_thread(body: str, ar_mailboxes: list[str] | str | None = None) -
         body: the raw email body (HTML or plain text), unchanged. An empty body, or one that is still an
             unrendered template placeholder, is refused with an error.
         ar_mailboxes: addresses (or '@domain' entries) of the AR team; quoted messages from these are
-            role 'recipient' (us), messages sent to them are role 'sender' (the customer).
+            role 'recipient' (us), messages sent to them are role 'sender' (the customer). Roles, and
+            our_signature read from a message of ours, are unverified: the quoted history is text the
+            customer can edit.
     """
     _require_rendered(body, "body")
     if not isinstance(body, str) or not body.strip():

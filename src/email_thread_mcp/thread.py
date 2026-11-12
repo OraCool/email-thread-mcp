@@ -60,10 +60,14 @@ _TIME = re.compile(r"(?<!\d)\d{1,2}[:.]\d{2}(?!\d)")
 _NUMERIC_DATE = re.compile(r"\d{1,4}[./-]\d{1,2}[./-]\d{2,4},?(\s+\d{1,2}[:.]\d{2})?")
 _YEAR = re.compile(r"(?<!\d)(19|20)\d{2}(?!\d)")
 
+# The name is words separated by whitespace that is followed by another word, all matched possessively:
+# no two parts can claim the same space, so a long run of (Unicode) spaces costs linear time.
 _GREETING = re.compile(
-    rf"^({_alternation(vocab.all_words('greetings'))})(?!\w)[\s,]*(?P<name>[^,!:]*?)\s*[,!:]?$",
+    rf"^({_alternation(vocab.all_words('greetings'))})(?!\w)[\s,]*+"
+    r"(?P<name>(?:[^,!:\s]++|\s++(?=[^,!:\s]))*+)\s*+[,!:]?$",
     re.IGNORECASE,
 )
+GREETING_LINE_MAX = 200  # a greeting line is short; longer lines are never matched
 _HONORIFIC = re.compile(rf"^({_alternation(vocab.all_words('honorifics'))})\.?(\s+|$)", re.IGNORECASE)
 _CLOSING = re.compile(
     rf"^({_alternation(vocab.all_words('closings'))})(?!\w)\s*[,.!-]?\s*(?P<rest>.*)$",
@@ -344,7 +348,7 @@ def looks_like_name(text: str) -> bool:
 
 def find_greeting(lines: list[str]) -> str | None:
     for line in lines[:3]:
-        m = _GREETING.match(line)
+        m = _GREETING.match(line) if len(line) <= GREETING_LINE_MAX else None
         if m:
             name = m.group("name").strip()
             return name if name and looks_like_name(_HONORIFIC.sub("", name)) else None
@@ -530,11 +534,14 @@ def resolve_reply_to_greeting(reply_to_name: str | None, history_newest_first: l
 _DISPLAY_NAME = re.compile(r"^\s*[\"'“]?(?P<name>[^\"'”<>@]+?)[\"'”]?\s*<")
 
 
+_DISPLAY_PART_MAX = 300  # one recipient: 'Display Name <address>'
+
+
 def _display_names(value: str | None) -> list[str]:
     """Display names of a From/To header: 'Mira Hollis <...>', 'Hollis, Mira <...>'."""
     names = []
     for part in re.split(r"[;\n]|(?<=>)\s*,", value or ""):
-        m = _DISPLAY_NAME.match(part)
+        m = _DISPLAY_NAME.match(part) if len(part) <= _DISPLAY_PART_MAX else None
         if not m:
             continue
         name = m.group("name").strip()
@@ -669,9 +676,10 @@ def _parse_email_thread(body: str, ar_mailboxes: list[str] | None) -> dict[str, 
         raw = raw[:_MAX_RAW_CHARS]
         warnings.append(f"body truncated to {_MAX_RAW_CHARS} characters before parsing")
     if looks_like_html(raw):
-        text, hidden_chars = html_to_text(raw)
+        text, hidden_chars, html_notes = html_to_text(raw)
         if hidden_chars:
             warnings.append(f"hidden HTML text removed: {hidden_chars} characters a reader would not see")
+        warnings += html_notes
     else:
         text = normalise_text(raw)
     text, invisible = strip_invisible(text)

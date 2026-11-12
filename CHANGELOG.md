@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.2
+
+Security fixes from a review of 0.10.1.
+
+- `parse_email_thread` / `validate_output`: the greeting match took cubic time on a line of Unicode
+  spaces after a greeting word (`Dear` + em spaces): a crafted body stalled the parser for minutes.
+  It is now linear, and lines over 200 characters are not read as greetings. A From/To display name
+  over 300 characters is not read.
+- Hidden text: `<style>` rules that hide a tag, class or id now hide it too, and so do a font under
+  2px, opacity under 0.1, zero size with `overflow:hidden`, off-screen offsets, `clip`, `scale(0)`,
+  `color:transparent`, `<template>` and `<noscript>`. A hiding rule that cannot be applied (attribute
+  or pseudo selector, conditional `@media`) gives a warning for review. Unicode tag characters and
+  variation selectors are removed as invisible characters.
+- A body hidden as a whole fails closed: `latest_message.text` is empty and a warning asks for
+  human review. Before, the hidden text was passed on as the email text.
+- Docs and contract: roles and `our_signature` come from quoted text the customer can edit and are
+  unverified.
+
 ## 0.10.1
 
 - `parse_email_thread`: the "Name, Team" signer match (0.10.0) ran in quadratic time on a line of

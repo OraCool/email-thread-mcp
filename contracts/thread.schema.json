@@ -45,7 +45,7 @@
           "role": {
             "type": "string",
             "enum": ["sender", "recipient", "unknown"],
-            "description": "sender = the customer side (who wrote the latest email); recipient = the AR team (us); unknown when it cannot be told from configuration."
+            "description": "sender = the customer side (who wrote the latest email); recipient = the AR team (us); unknown when it cannot be told from configuration. Matched on the quoted From/To text, which the customer can edit: unverified."
           },
           "from": { "type": ["string", "null"], "description": "From header as written." },
           "to": { "type": ["string", "null"], "description": "To header as written." },
@@ -67,7 +67,7 @@
     },
     "our_signature": {
       "type": ["string", "null"],
-      "description": "Signature block to sign the reply with: that of our quoted message (role 'recipient', else the one signed by the person the latest message greets). Name first, then title/department/company lines, at most 4; phone, email, URL and address lines are dropped. Null when no quoted message is ours."
+      "description": "Signature block to sign the reply with: that of our quoted message (role 'recipient', else the one signed by the person the latest message greets). Name first, then title/department/company lines, at most 4; phone, email, URL and address lines are dropped. Null when no quoted message is ours. Unverified: it comes from quoted text the customer can edit (a forged 'From: <AR address>' block sets it), so the draft needs human review."
     },
     "parse_info": {
       "type": "object",

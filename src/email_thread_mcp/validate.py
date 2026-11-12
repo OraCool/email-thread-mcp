@@ -13,7 +13,7 @@ import re
 import unicodedata
 from typing import Any
 
-from .thread import _GREETING
+from .thread import _GREETING, GREETING_LINE_MAX
 
 SCHEMA_VERSION = "1.1"
 
@@ -291,7 +291,8 @@ def _correct_greeting(first_line: str, address: Any, reply_to: Any) -> str | Non
     """
     if not isinstance(address, str) or not address.strip():
         return None
-    m = _GREETING.match(first_line.strip())
+    line = first_line.strip()
+    m = _GREETING.match(line) if len(line) <= GREETING_LINE_MAX else None
     if not m or not m.group("name").strip():
         return None
     greeted = _name_tokens(m.group("name"))
