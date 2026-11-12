@@ -1,6 +1,6 @@
 """Deterministic checks of the agent's output envelope.
 
-Output shape: contracts/validation.schema.json (schema_version 1.0).
+Output shape: contracts/validation.schema.json (schema_version 1.1).
 
 Corrects only what is unambiguous and reports the rest. In particular it never maps a category by
 similarity or prefix: "Invoice" is not silently turned into "Copy of Invoice".
@@ -15,13 +15,9 @@ from typing import Any
 
 from .thread import _GREETING
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 _DATE_LIKE = re.compile(r"^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$")
-_PROMISES_DOCUMENT = re.compile(
-    r"\b(send|attach|resend|forward|provide)\b[^.\n]{0,60}\b(copy|copies|invoice|statement|proof of delivery|pod|credit note)\b",
-    re.IGNORECASE,
-)
 _PLACEHOLDER = re.compile(r"\[[^\]]*attached\]", re.IGNORECASE)
 _MARKUP_TAG = re.compile(r"</?[A-Za-z][\w-]*>")
 _REPLY_PREFIXES = re.compile(r"^((?:re|aw|sv|antw)\s*:\s*)(?:(?:re|aw|sv|antw)\s*:\s*)+", re.IGNORECASE)
@@ -276,9 +272,11 @@ def _check_draft(out: dict[str, Any], thread: dict[str, Any] | None, issues: lis
             issues.append(_issue("greeting_matches_reply_to", "warning", "$.draft_response.draft_body",
                                  f"the draft does not greet '{reply_to}', the person to reply to", False))
 
-    if _PROMISES_DOCUMENT.search(body) and not _PLACEHOLDER.search(body):
-        issues.append(_issue("attachment_placeholder", "warning", "$.draft_response.draft_body",
-                             "the draft promises a document but has no '[... attached]' placeholder", False))
+    # A document we send is described in words ("Please find attached a copy of invoice ..."); the
+    # drafter sets attachment_required itself, so it is neither derived nor changed here.
+    if _PLACEHOLDER.search(body):
+        issues.append(_issue("attachment_placeholder_present", "warning", "$.draft_response.draft_body",
+                             "the draft carries an '[... attached]' placeholder; drafts say in words that a document is attached", False))
 
 
 def _name_tokens(name: str) -> set[str]:

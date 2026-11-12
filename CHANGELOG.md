@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0
+
+The greeting is formal, and an attached document is described in words, not with a placeholder.
+
+- `validate_output` / `assemble_output`: the `attachment_placeholder` warning (a draft promising a
+  document without an `[... attached]` placeholder) is removed; new `attachment_placeholder_present`
+  warns when the draft carries such a placeholder. Not auto-corrected; `attachment_required` is the
+  drafter's and is never set or changed. Contracts: validation schema_version 1.1, assemble 1.2.
+- `parse_email_thread`: a latest message signed with a first name alone gets the surname another
+  message gives (a fuller signature, a From/To display name including Outlook's "Surname, First",
+  or our titled greeting sent to an address naming both). `reply_to_greeting` is then our titled
+  greeting ("Ms Hollis") or the full name; a title is never inferred. With no surname, or two
+  different ones, the first name stays.
+- `parse_email_thread`: a signature line "<name>, <role>", "<name> | <role>" or "<name> - <role>"
+  gives the 2-3 capitalised words before the role as `signer_name` ("Owen Pratt, AP Team" -> "Owen
+  Pratt"). A team or company line ("AP Team", "Accounts Payable, Northgate Ltd") is still no signer.
+
 ## 0.9.0
 
 The draft reply is written in the incoming email's language; every other free text stays in the

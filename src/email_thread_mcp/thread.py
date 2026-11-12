@@ -351,6 +351,25 @@ def find_greeting(lines: list[str]) -> str | None:
     return None
 
 
+# "Owen Pratt, AP Team" / "Owen Pratt | Credit Control" / "Owen Pratt - AP": a name, then a role.
+_NAME_THEN_ROLE = re.compile(r"^(?P<name>[^,|]+?)\s*(?:,|\||\s[-–—]\s)\s*\S")
+
+
+def signer_from_line(line: str) -> str | None:
+    """The name on a signature line: the whole line, or the 2-3 capitalised words before a role."""
+    line = line.strip()
+    if looks_like_name(line):
+        return line
+    m = _NAME_THEN_ROLE.match(line)
+    if not m:
+        return None
+    name = m.group("name").strip()
+    words = name.split()
+    if 2 <= len(words) <= 3 and looks_like_name(name) and all(w[0].isupper() for w in words):
+        return name
+    return None
+
+
 def find_signoff(lines: list[str]) -> tuple[int | None, str | None, str | None]:
     """Return (index of the closing line, signer name, signature block) for the LAST sign-off."""
     for idx in range(len(lines) - 1, -1, -1):
@@ -361,10 +380,10 @@ def find_signoff(lines: list[str]) -> tuple[int | None, str | None, str | None]:
         if not m:
             continue
         rest = m.group("rest").strip()
-        if rest and not looks_like_name(rest):
+        if rest and not signer_from_line(rest):
             continue  # "Thank you for your collaboration." is a sentence, not a sign-off
         after = [l for l in lines[idx + 1 : idx + 9] if l]
-        signer = rest or (after[0] if after and looks_like_name(after[0]) else None)
+        signer = signer_from_line(rest) if rest else (signer_from_line(after[0]) if after else None)
         signature_lines = ([rest] if rest else []) + after
         return idx, signer, "\n".join(signature_lines) or None
     return None, None, None
@@ -504,6 +523,76 @@ def resolve_reply_to_greeting(reply_to_name: str | None, history_newest_first: l
     return reply_to_name
 
 
+_DISPLAY_NAME = re.compile(r"^\s*[\"'“]?(?P<name>[^\"'”<>@]+?)[\"'”]?\s*<")
+
+
+def _display_names(value: str | None) -> list[str]:
+    """Display names of a From/To header: 'Mira Hollis <...>', 'Hollis, Mira <...>'."""
+    names = []
+    for part in re.split(r"[;\n]|(?<=>)\s*,", value or ""):
+        m = _DISPLAY_NAME.match(part)
+        if not m:
+            continue
+        name = m.group("name").strip()
+        if name.count(",") == 1:  # Outlook's 'Surname, First name'
+            last, first = (p.strip() for p in name.split(","))
+            name = f"{first} {last}" if len(first.split()) == 1 else ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _local_part_tokens(value: str | None) -> set[str]:
+    return {t for a in _addresses(value) for t in re.split(r"[._-]+", a.split("@", 1)[0]) if t}
+
+
+def _full_name_for(first: str, history_newest_first: list[Message]) -> tuple[str | None, str | None]:
+    """(full name, titled greeting) a quoted message gives for a person signed by first name only.
+
+    Full names come from the customer side's signatures and From headers, our messages' To headers and
+    untitled greetings ("Dear Mira Hollis,"). A titled greeting of ours ("Dear Ms Hollis,") counts
+    when a full name has that surname, or when that message was sent to an address naming both
+    ('mira.hollis@...'). Two different surnames for the same first name: (None, None).
+    """
+    key = first.casefold()
+    full: dict[str, str] = {}  # surname -> full name
+    titled: dict[str, str] = {}  # surname -> titled greeting
+    for m in history_newest_first:
+        candidates: list[str] = []
+        if m.role != "recipient":
+            candidates += [m.signer_name or ""] + _display_names(m.headers.get("from"))
+        if m.role != "sender":
+            candidates += _display_names(m.headers.get("to"))
+            g = m.greeting_name
+            if g and _has_honorific(g):
+                surname = _name_tokens(g)[-1]
+                titled.setdefault(surname, g)
+                if key in _local_part_tokens(m.headers.get("to")) and surname in _local_part_tokens(m.headers.get("to")):
+                    full.setdefault(surname, f"{first} {_HONORIFIC.sub('', g.strip()).split()[-1]}")
+            elif g:
+                candidates.append(g)
+        for c in candidates:
+            tokens = _name_tokens(c)
+            if len(tokens) >= 2 and tokens[0] == key and looks_like_name(c) and not _has_honorific(c):
+                full.setdefault(tokens[-1], c.strip())
+    if len(full) != 1:
+        return None, None
+    surname, name = next(iter(full.items()))
+    return name, titled.get(surname)
+
+
+def resolve_reply_to(latest: Message, history_newest_first: list[Message]) -> tuple[str | None, str | None]:
+    """(reply_to_name, reply_to_greeting). The greeting is formal: a first name alone is kept only when
+    no message gives that person's surname; then it is the titled greeting a message of ours used, else
+    the full name. An honorific is never inferred from a first name."""
+    name = resolve_reply_to_name(latest, history_newest_first)
+    if name and len(_name_tokens(name)) == 1 and not _has_honorific(name):
+        full, titled = _full_name_for(name.strip(), history_newest_first)
+        if full:
+            return full, titled or full
+    return name, resolve_reply_to_greeting(name, history_newest_first)
+
+
 _SIGNATURE_LINES = 4
 
 
@@ -521,7 +610,7 @@ def _clean_signature(m: Message) -> str | None:
     lines = [l.strip() for l in (m.signature or "").split("\n") if l.strip()]
     if not lines:
         return None
-    if lines[0] != m.signer_name:
+    if not m.signer_name or not lines[0].startswith(m.signer_name):
         return m.signer_name
     kept = [lines[0]] + [l for l in lines[1:] if _signature_line_ok(l)]
     return "\n".join(kept[:_SIGNATURE_LINES])
@@ -615,7 +704,7 @@ def _parse_email_thread(body: str, ar_mailboxes: list[str] | None) -> dict[str, 
     if not latest.text_without_signature:
         warnings.append("latest message has no text besides greeting/signature")
 
-    reply_to_name = resolve_reply_to_name(latest, quoted)
+    reply_to_name, reply_to_greeting = resolve_reply_to(latest, quoted)
     return {
         "schema_version": SCHEMA_VERSION,
         "latest_message": {
@@ -638,7 +727,7 @@ def _parse_email_thread(body: str, ar_mailboxes: list[str] | None) -> dict[str, 
             for m in reversed(quoted)  # contract: oldest first
         ],
         "reply_to_name": reply_to_name,
-        "reply_to_greeting": resolve_reply_to_greeting(reply_to_name, quoted),
+        "reply_to_greeting": reply_to_greeting,
         "our_signature": resolve_our_signature(latest, quoted),
         "parse_info": {
             "format": detect_format(raw, len(quoted)),

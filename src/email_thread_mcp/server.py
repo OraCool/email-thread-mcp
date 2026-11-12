@@ -123,7 +123,7 @@ def validate_output(
     expected_draft_language: str | None = None,
 ) -> dict[str, Any]:
     """Check the agent's output envelope: categories must come from the request's list,
-    invoice numbers clean, the draft greets the right person and marks promised attachments.
+    invoice numbers clean, the draft greets the right person and carries no '[... attached]' placeholder.
     Safe corrections are applied to the returned `output`; everything else is reported in `issues`.
 
     Args:

@@ -49,7 +49,7 @@ def _checks(out: dict) -> list[tuple[str, str]]:
 def test_valid_envelope_passes_unchanged() -> None:
     env = _envelope()
     out = assemble_output(env, SCHEMA, CATEGORIES)
-    assert out["validation"] == {"schema_version": "1.1", "valid": True, "issues": [], "error": None}
+    assert out["validation"] == {"schema_version": "1.2", "valid": True, "issues": [], "error": None}
     assert {k: v for k, v in out.items() if k != "validation"} == env
 
 

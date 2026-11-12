@@ -11,7 +11,7 @@
       "additionalProperties": false,
       "required": ["schema_version", "valid", "issues", "error"],
       "properties": {
-        "schema_version": { "const": "1.1" },
+        "schema_version": { "const": "1.2", "description": "1.2 (0.10.0): check attachment_placeholder became attachment_placeholder_present." },
         "valid": {
           "type": "boolean",
           "description": "True when no issue of severity 'error' remains after the safe corrections. A schema violation is always an error."
@@ -37,7 +37,7 @@
                   "invoice_numbers",
                   "requires_human_review",
                   "greeting_matches_reply_to",
-                  "attachment_placeholder",
+                  "attachment_placeholder_present",
                   "draft_missing",
                   "draft_subject_markup"
                 ]

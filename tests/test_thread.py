@@ -238,3 +238,141 @@ def test_our_signature_is_the_fullest_block_of_our_person() -> None:
     result = parse_email_thread(body)
     assert [m["signer_name"] for m in result["thread_context"]][-1] == "Clara Weiss"
     assert result["our_signature"] == "Clara Weiss\nFinance Department\nExample Trading GmbH"
+
+
+# ---- formal greeting: a first-name signer gets the surname another message gives (0.10.0) ---- #
+
+def _reply(latest: str, quoted: str) -> dict:
+    return parse_email_thread(f"{latest}\n\n{quoted}", ["ar@example.com"])
+
+
+_OUR_TITLED = """From: AR Team <ar@example.com>
+Sent: Monday, October 5, 2026 9:15 AM
+To: Mira Hollis <m.hollis@customer.example>
+Subject: Overdue invoice 9000031
+
+Dear Ms Hollis,
+
+Invoice 9000031 is overdue. Could you confirm the payment date?
+
+Kind regards,
+Anna Keller
+"""
+
+_FIRST_NAME_LATEST = "Hi Anna,\n\nPayment for invoice 9000031 goes out on Friday.\n\nThanks,\nMira"
+
+
+def test_first_name_signer_gets_the_title_our_message_used() -> None:
+    result = _reply(_FIRST_NAME_LATEST, _OUR_TITLED)
+    assert result["latest_message"]["signer_name"] == "Mira"
+    assert result["reply_to_name"] == "Mira Hollis"
+    assert result["reply_to_greeting"] == "Ms Hollis"
+
+
+def test_titled_greeting_is_linked_by_the_address_it_was_sent_to() -> None:
+    quoted = _OUR_TITLED.replace("To: Mira Hollis <m.hollis@customer.example>", "To: mira.hollis@customer.example")
+    result = _reply(_FIRST_NAME_LATEST, quoted)
+    assert (result["reply_to_name"], result["reply_to_greeting"]) == ("Mira Hollis", "Ms Hollis")
+
+
+def test_a_titled_greeting_of_someone_else_is_not_used() -> None:
+    quoted = _OUR_TITLED.replace("To: Mira Hollis <m.hollis@customer.example>", "To: r.dunmore@customer.example")
+    quoted = quoted.replace("Dear Ms Hollis,", "Dear Ms Dunmore,")
+    result = _reply(_FIRST_NAME_LATEST, quoted)
+    assert (result["reply_to_name"], result["reply_to_greeting"]) == ("Mira", "Mira")
+
+
+def test_first_name_signer_gets_the_full_name_of_a_fuller_signature() -> None:
+    quoted = """From: m.hollis@customer.example
+Sent: Monday, October 5, 2026 9:15 AM
+To: ar@example.com
+Subject: Invoice 9000031
+
+Hello,
+
+we are checking invoice 9000031.
+
+Best regards
+Mira Hollis
+Accounts Payable
+"""
+    result = _reply(_FIRST_NAME_LATEST, quoted)
+    assert result["reply_to_name"] == "Mira Hollis"
+    assert result["reply_to_greeting"] == "Mira Hollis"  # no message states a title: none is inferred
+
+
+def test_first_name_signer_gets_the_full_name_of_the_display_name() -> None:
+    quoted = """From: "Hollis, Mira" <m.hollis@customer.example>
+Sent: Monday, October 5, 2026 9:15 AM
+To: ar@example.com
+Subject: Invoice 9000031
+
+Hello,
+
+we are checking invoice 9000031.
+
+Mira
+"""
+    result = _reply(_FIRST_NAME_LATEST, quoted)
+    assert (result["reply_to_name"], result["reply_to_greeting"]) == ("Mira Hollis", "Mira Hollis")
+
+
+def test_first_name_stays_when_no_message_gives_a_surname() -> None:
+    quoted = """From: AR Team <ar@example.com>
+Sent: Monday, October 5, 2026 9:15 AM
+To: purchasing@customer.example
+Subject: Overdue invoice 9000032
+
+Dear Bruno,
+
+Invoice 9000032 is overdue.
+
+Kind regards,
+Anna Keller
+"""
+    result = _reply("Hi Anna,\n\nWe pay on Friday.\n\nRegards,\nBruno", quoted)
+    assert (result["reply_to_name"], result["reply_to_greeting"]) == ("Bruno", "Bruno")
+
+
+def test_two_surnames_for_one_first_name_keep_the_first_name() -> None:
+    quoted = _OUR_TITLED.replace("To: Mira Hollis <m.hollis@customer.example>",
+                                 "To: Mira Hollis <m.hollis@customer.example>; Mira Quade <m.quade@customer.example>")
+    result = _reply(_FIRST_NAME_LATEST, quoted)
+    assert result["reply_to_name"] == "Mira"
+
+
+# ---- signer on a "Name, Team" line (0.10.0) ------------------------------------------------- #
+
+_OUR_TO_COLLEAGUE = """From: AR Team <ar@example.com>
+Sent: Monday, October 5, 2026 9:15 AM
+To: Ines Marlow <i.marlow@customer.example>
+Subject: Overdue invoice 9000033
+
+Dear Ms Marlow,
+
+Invoice 9000033 is overdue.
+
+Kind regards,
+Anna Keller
+"""
+
+
+@pytest.mark.parametrize("line", ["Owen Pratt, AP Team", "Owen Pratt | Accounts Payable", "Owen Pratt - AP Team"])
+def test_signer_is_the_name_before_a_role(line: str) -> None:
+    result = _reply(f"Hello Anna,\n\nInvoice 9000033 is approved.\n\nRegards\n{line}", _OUR_TO_COLLEAGUE)
+    assert result["latest_message"]["signer_name"] == "Owen Pratt"
+    assert line in result["latest_message"]["signature"]
+    assert (result["reply_to_name"], result["reply_to_greeting"]) == ("Owen Pratt", "Owen Pratt")
+
+
+@pytest.mark.parametrize("signoff", ["Kind regards,\nAP Team", "Regards, AP Team", "Regards\nAccounts Payable, Northgate Ltd"])
+def test_a_team_or_company_line_is_not_a_signer(signoff: str) -> None:
+    result = parse_email_thread(f"Hello,\n\nInvoice 9000034 is approved.\n\n{signoff}")
+    assert result["latest_message"]["signer_name"] is None
+    assert result["reply_to_name"] is None
+
+
+def test_our_signature_keeps_a_name_and_role_line() -> None:
+    quoted = _OUR_TO_COLLEAGUE.replace("Kind regards,\nAnna Keller", "Kind regards,\nAnna Keller, Credit Control\nExample Corp")
+    result = _reply("Dear Anna Keller,\n\nWe pay on Friday.\n\nRegards,\nInes Marlow", quoted)
+    assert result["our_signature"] == "Anna Keller, Credit Control\nExample Corp"

@@ -59,11 +59,11 @@
     },
     "reply_to_name": {
       "type": ["string", "null"],
-      "description": "Who the draft reply should greet: the latest message's signer, else the name our previous message greeted, else null. Null means the drafter uses a neutral greeting; the tool never guesses a name."
+      "description": "Who the draft reply should greet: the latest message's signer (the name before the role on a 'Name, Team' line), else the name our previous message greeted, else null. A first name alone becomes the full name when a quoted message gives that person's surname (a fuller signature, a From/To display name, or our titled greeting sent to an address naming both). Null means the drafter uses a neutral greeting; the tool never guesses a name."
     },
     "reply_to_greeting": {
       "type": ["string", "null"],
-      "description": "The form of address for reply_to_name: how a quoted message not from the customer already greeted that person ('Mr. Berg' for 'Jan Berg'), else reply_to_name unchanged. Null when reply_to_name is null. An honorific is never added that no message states."
+      "description": "The form of address for reply_to_name: how a quoted message not from the customer already greeted that person ('Mr. Berg' for 'Jan Berg'), else reply_to_name unchanged. Used as given, so it is a first name alone only when no message gives a surname. Null when reply_to_name is null. An honorific is never added that no message states."
     },
     "our_signature": {
       "type": ["string", "null"],

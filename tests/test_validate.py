@@ -72,11 +72,20 @@ def test_greeting_the_ar_team_member_is_reported() -> None:
     assert ok["issues"] == []
 
 
-def test_promised_document_without_placeholder_is_reported() -> None:
-    result = validate_output(_envelope("Copy of Invoice", draft="Dear Mr. Svensson,\n\nWe will resend a copy of invoice 9000022."), CATEGORIES)
-    assert ("attachment_placeholder", "warning", False) in _checks(result)
-    ok = validate_output(_envelope("Copy of Invoice", draft="Dear Mr. Svensson,\n\nWe will send you a copy of invoice 9000022. [Invoice PDF attached]"), CATEGORIES)
-    assert ok["issues"] == []
+@pytest.mark.parametrize("draft, flagged", [
+    ("Dear Mr. Svensson,\n\nPlease find attached a copy of invoice 9000022.", False),
+    ("Dear Mr. Svensson,\n\nWe will send you a copy of invoice 9000022. [Invoice PDF attached]", True),
+    ("Dear Mr. Svensson,\n\nWe will send the corrected invoice after the review.", False),
+])
+def test_an_attached_placeholder_is_reported_and_a_document_in_words_is_not(draft: str, flagged: bool) -> None:
+    env = _envelope("Copy of Invoice", draft=draft)
+    env["draft_response"]["attachment_required"] = False  # the drafter's value, kept as given
+    result = validate_output(env, CATEGORIES)
+    checks = [i["check"] for i in result["issues"]]
+    assert ("attachment_placeholder_present" in checks) is flagged
+    assert "attachment_placeholder" not in checks
+    assert result["output"]["draft_response"]["draft_body"] == draft  # reported, never rewritten
+    assert result["output"]["draft_response"]["attachment_required"] is False
 
 
 def test_normalise_name_keeps_words() -> None:

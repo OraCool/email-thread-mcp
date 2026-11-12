@@ -29,7 +29,7 @@ from .validate import (
     _check_language,
 )
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 _MAX_SCHEMA_ERRORS = 50
 _MAX_ERROR_DETAILS = 20

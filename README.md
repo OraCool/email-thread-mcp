@@ -21,7 +21,7 @@ Any MCP client that starts stdio servers can run it with `uvx`:
   "mcpServers": {
     "email-thread-mcp": {
       "command": "uvx",
-      "args": ["email-thread-mcp@0.9.0"]
+      "args": ["email-thread-mcp@0.10.0"]
     }
   }
 }
@@ -49,12 +49,18 @@ underscores become spaces and every word gets an uppercase first letter (`send_r
 unrendered template (a variable it uses was not set) raises an error that says so.
 With `thread`, a draft greeting that shares no part of a name with `reply_to_greeting` or
 `reply_to_name` ("Dear Mr. Smith," when the customer is Jan Berg) has that name replaced by
-`reply_to_greeting`, with a corrected warning. A greeting by first name only is kept.
+`reply_to_greeting`, with a corrected warning. A greeting by first name only is kept. A draft that
+carries an `[... attached]` placeholder gets an `attachment_placeholder_present` warning: drafts say in
+words that a document is attached (since 0.10.0).
 
 For the reply, two fields save the drafting model from reading the whole thread:
 
 - `reply_to_greeting`: how to address `reply_to_name`. If our earlier message opened "Dear Mr. Berg,",
   it is `Mr. Berg` for `Jan Berg`; otherwise the name as given. No honorific is added that no message states.
+  A latest message signed with a first name alone ("Mira") gets the surname another message gives: a
+  fuller signature, a From/To display name, or our "Dear Ms Hollis," sent to that person. Then
+  `reply_to_name` is `Mira Hollis` and `reply_to_greeting` is `Ms Hollis`, or `Mira Hollis` when no
+  message states a title (since 0.10.0). A signature line "Owen Pratt, AP Team" is signed by Owen Pratt.
 - `our_signature`: the signature block of our quoted message, to sign the reply with. Our message is
   the one from `ar_mailboxes` or, without them, the one signed by the person the customer greets
   ("Dear Ms. Weiss" → Clara Weiss's message). Of that person's quoted messages, the fullest block is
