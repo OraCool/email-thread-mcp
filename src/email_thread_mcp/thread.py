@@ -352,12 +352,16 @@ def find_greeting(lines: list[str]) -> str | None:
 
 
 # "Owen Pratt, AP Team" / "Owen Pratt | Credit Control" / "Owen Pratt - AP": a name, then a role.
-_NAME_THEN_ROLE = re.compile(r"^(?P<name>[^,|]+?)\s*(?:,|\||\s[-–—]\s)\s*\S")
+# Name words hold no whitespace, so the parts cannot overlap: linear on any line.
+_NAME_THEN_ROLE = re.compile(r"^(?P<name>[^\s,|]+(?:\s[^\s,|]+){1,2})\s?(?:,|\||\s[-–—]\s)\s*\S")
+_SIGNER_LINE_MAX = 60
 
 
 def signer_from_line(line: str) -> str | None:
     """The name on a signature line: the whole line, or the 2-3 capitalised words before a role."""
     line = line.strip()
+    if len(line) > _SIGNER_LINE_MAX:
+        return None
     if looks_like_name(line):
         return line
     m = _NAME_THEN_ROLE.match(line)

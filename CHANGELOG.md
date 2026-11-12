@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+- `parse_email_thread`: the "Name, Team" signer match (0.10.0) ran in quadratic time on a line of
+  Unicode spaces (em space, `&emsp;`), so a crafted body could stall the parser for minutes. It is now
+  linear, and a signature line over 60 characters is never read as a signer.
+
 ## 0.10.0
 
 The greeting is formal, and an attached document is described in words, not with a placeholder.

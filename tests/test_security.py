@@ -81,6 +81,16 @@ def test_a_long_line_without_an_address_stays_fast() -> None:
     assert elapsed < 2
 
 
+@pytest.mark.parametrize("space", ["\u2003", "\u3000", "\u205f", "&emsp;"])
+def test_a_signature_line_of_wide_spaces_stays_fast(space: str) -> None:
+    # Unicode spaces survive normalisation; the "Name, Team" signer match must stay linear on them.
+    line = "A" + space * 100_000 + "x"
+    body = f"<p>Regards</p><p>{line}</p>" if space.startswith("&") else f"Hello,\n\nok.\n\nRegards\n{line}"
+    elapsed, result = _seconds(body)
+    assert elapsed < 2
+    assert result["latest_message"]["signer_name"] is None
+
+
 def test_many_header_like_lines_hit_the_date_limit_not_the_cpu() -> None:
     body = "From: a <a@b.example>\n" + "".join(
         f"To: x{i}@c.example\nDate: 29.09.2026 10:{i % 60:02d} n{i}\nSubject: s{i}\n" for i in range(2000)
